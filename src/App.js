@@ -186,7 +186,7 @@ const AdminPage = () => {
     
     const [dailyModalOpen, setDailyModalOpen] = useState(false);
     const [editingDailyPatient, setEditingDailyPatient] = useState(null);
-    const [dailyFormData, setDailyFormData] = useState({ name: '', bed: ''});
+    const [dailyFormData, setDailyFormData] = useState({ name: '', bed: '', furigana: ''});
 
     const [confirmMasterDelete, setConfirmMasterDelete] = useState({ isOpen: false, patientId: null });
     const [confirmDailyDelete, setConfirmDailyDelete] = useState({ isOpen: false, patientId: null });
@@ -220,7 +220,7 @@ const AdminPage = () => {
 
     const handleOpenDailyModal = (patient = null) => {
         setEditingDailyPatient(patient);
-        setDailyFormData(patient ? { name: patient.name, bed: patient.bed } : { name: '', bed: '' });
+        setDailyFormData(patient ? { name: patient.name, bed: patient.bed, furigana: patient.furigana || '' } : { name: '', bed: '', furigana: '' });
         setDailyModalOpen(true);
     };
     const handleCloseDailyModal = () => { setDailyModalOpen(false); setEditingDailyPatient(null); };
@@ -231,7 +231,7 @@ const AdminPage = () => {
         try {
             const targetCollection = dailyPatientsCollectionRef(selectedCool);
             if (editingDailyPatient) {
-                await updateDoc(doc(targetCollection, editingDailyPatient.id), { name: dailyFormData.name, bed: dailyFormData.bed, updatedAt: serverTimestamp() });
+                await updateDoc(doc(targetCollection, editingDailyPatient.id), { name: dailyFormData.name, bed: dailyFormData.bed, furigana: dailyFormData.furigana, updatedAt: serverTimestamp() });
             } else {
                 await addDoc(targetCollection, { ...dailyFormData, status: '治療中', isTemporary: true, createdAt: serverTimestamp() });
             }
@@ -290,7 +290,7 @@ const AdminPage = () => {
     return (
         <div className="space-y-8">
             {masterModalOpen && <CustomModal title={editingMasterPatient ? "患者情報の編集" : "新規患者登録"} onClose={handleCloseMasterModal} footer={<><button onClick={handleCloseMasterModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleMasterSubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleMasterSubmit} className="space-y-4"><div><label className="block font-medium mb-1">氏名</label><input type="text" name="name" value={masterFormData.name} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" required /></div><div><label className="block font-medium mb-1">ふりがな</label><input type="text" name="furigana" value={masterFormData.furigana} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="例：やまだ たろう" /></div><div><label className="block font-medium mb-1">ベッド番号</label><input type="text" name="bed" value={masterFormData.bed} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" required /></div><div><label className="block font-medium mb-1">曜日</label><select name="day" value={masterFormData.day} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="月水金">月水金</option><option value="火木土">火木土</option></select></div><div><label className="block font-medium mb-1">クール</label><select name="cool" value={masterFormData.cool} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div></form></CustomModal>}
-            {dailyModalOpen && <CustomModal title={editingDailyPatient ? "臨時情報の編集" : "臨時患者の追加"} onClose={handleCloseDailyModal} footer={<><button onClick={handleCloseDailyModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleDailySubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleDailySubmit} className="space-y-4"><div><label className="block font-medium mb-1">氏名</label><input type="text" name="name" value={dailyFormData.name} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /></div><div><label className="block font-medium mb-1">ベッド番号</label><input type="text" name="bed" value={dailyFormData.bed} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /></div></form></CustomModal>}
+            {dailyModalOpen && <CustomModal title={editingDailyPatient ? "臨時情報の編集" : "臨時患者の追加"} onClose={handleCloseDailyModal} footer={<><button onClick={handleCloseDailyModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleDailySubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleDailySubmit} className="space-y-4"><div><label className="block font-medium mb-1">氏名</label><input type="text" name="name" value={dailyFormData.name} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /><div> <label className="block font-medium mb-1">ふりがな</label><input type="text" name="furigana" value={dailyFormData.furigana} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" placeholder="例：りんじ たろう"/></div></div><div><label className="block font-medium mb-1">ベッド番号</label><input type="text" name="bed" value={dailyFormData.bed} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /></div></form></CustomModal>}
             {confirmMasterDelete.isOpen && <ConfirmationModal title="マスタから削除" message="この患者情報をマスタから完全に削除しますか？" onConfirm={handleConfirmMasterDelete} onCancel={() => setConfirmMasterDelete({ isOpen: false, patientId: null })} confirmText="削除" confirmColor="red" />}
             {confirmDailyDelete.isOpen && <ConfirmationModal title="リストから削除" message="この患者を本日のリストから削除しますか？マスタ登録は残ります。" onConfirm={handleConfirmDailyDelete} onCancel={() => setConfirmDailyDelete({ isOpen: false, patientId: null })} confirmText="削除" confirmColor="red" />}
             {confirmLoadModal.isOpen && <ConfirmationModal title="読み込みの確認" message="既にリストが存在します。上書きしてマスタから再読み込みしますか？" onConfirm={confirmLoadModal.onConfirm} onCancel={() => setConfirmLoadModal({ isOpen: false, onConfirm: () => {} })} confirmText="再読み込み" confirmColor="blue" />}
