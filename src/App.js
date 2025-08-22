@@ -2,10 +2,11 @@ import React, { useState, useEffect, createContext, useContext, useRef } from 'r
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions'; 
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
-    apiKey: "AIzaSyBTL-HLYX6dv3wpD8CMtzY1aDC2h2vW7Ec",
+    apiKey: process.env.REACT_APP_FIREBASE_API_KEY, // ← Netlifyの環境変数から読み込む
     authDomain: "patient-call-app-f5e7f.firebaseapp.com",
     projectId: "patient-call-app-f5e7f",
     storageBucket: "patient-call-app-f5e7f.firebasestorage.app",
@@ -20,6 +21,8 @@ const appId = firebaseConfig.appId;
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const functions = getFunctions(app);
+const synthesizeSpeech = httpsCallable(functions, 'synthesizeSpeech');
 
 // --- Helper Components & Functions ---
 const getTodayString = () => {
@@ -343,7 +346,7 @@ const MonitorPage = () => {
     const [isSpeaking, setIsSpeaking] = useState(false);
     const speechQueueRef = useRef([]);
 
-    const speakNextInQueue = () => {
+   const speakNextInQueue = () => {
         if (speechQueueRef.current.length === 0) {
             setIsSpeaking(false);
             return;
@@ -352,22 +355,29 @@ const MonitorPage = () => {
         const patient = speechQueueRef.current.shift();
         const nameToSpeak = patient.furigana || patient.name;
         const textToSpeak = `${nameToSpeak}さんのお迎えのかた、${patient.bed}番ベッドへお願いします。`;
-        
-        try {
-            const utterance = new SpeechSynthesisUtterance(textToSpeak);
-            utterance.lang = 'ja-JP';
-            utterance.rate = 1.0;
-            utterance.pitch = 1.0;
-            utterance.onend = () => {
-                // 次の読み上げまで少し間を空ける
-                setTimeout(speakNextInQueue, 1000);
-            };
-            window.speechSynthesis.speak(utterance);
-        } catch (e) {
-            console.error("音声読み上げに失敗しました:", e);
-            // エラーが発生しても次のキューに進む
+
+        // ▼▼▼ この3行を追加 ▼▼▼
+        if (!textToSpeak || textToSpeak.trim() === "") {
             setTimeout(speakNextInQueue, 1000);
+            return;
         }
+        
+        // Cloud Functionを呼び出す
+        synthesizeSpeech({ text: textToSpeak })
+            .then((result) => {
+                const audioContent = result.data.audioContent;
+                const audio = new Audio("data:audio/mp3;base64," + audioContent);
+                audio.play();
+                audio.onended = () => {
+                    // 次の読み上げまで少し間を空ける
+                    setTimeout(speakNextInQueue, 1000);
+                };
+            })
+            .catch((error) => {
+                console.error("Speech synthesis failed:", error);
+                // エラーが発生しても次のキューに進む
+                setTimeout(speakNextInQueue, 1000);
+            });
     };
 
     useEffect(() => {
@@ -382,7 +392,7 @@ const MonitorPage = () => {
         }
         
         prevCallingPatientIdsRef.current = currentCallingIds;
-    }, [callingPatients]);
+    }, [callingPatients, isSpeaking, speakNextInQueue]); // <-- 依存配列に2つ追加
 
     if (loading) return <LoadingSpinner text="モニターデータを読み込み中..." />;
 
@@ -501,7 +511,7 @@ const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) =
                     <div className="flex items-center">
                         {onGoBack && (
                            <button onClick={onGoBack} className="mr-4 flex items-center text-sm text-gray-600 hover:text-blue-600 transition">
-                               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24" stroke="currentColor">
+                               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                                </svg>
                                <span className="hidden sm:inline ml-1">戻る</span>
