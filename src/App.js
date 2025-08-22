@@ -338,7 +338,7 @@ const AdminPage = () => {
 };
 
 // --- 2. Monitor Page ---
-const itorPage = () => {
+const MonitorPage = () => {
     const { allPatients, loading } = useAllDayPatients();
     const callingPatients = allPatients.filter(p => p.status === '呼び出し中');
     const treatmentPatients = allPatients.filter(p => p.status === '治療中');
