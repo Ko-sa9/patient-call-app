@@ -6,7 +6,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
-    apiKey: "AIzaSyBTL-HLYX6dv3wpD8CMtzY1aDC2h2vW7Ec",
+    apiKey: process.env.REACT_APP_FIREBASE_API_KEY, // ← Netlifyの環境変数から読み込む
     authDomain: "patient-call-app-f5e7f.firebaseapp.com",
     projectId: "patient-call-app-f5e7f",
     storageBucket: "patient-call-app-f5e7f.firebasestorage.app",
