@@ -2,6 +2,7 @@ import React, { useState, useEffect, createContext, useContext, useRef } from 'r
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions'; 
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -20,6 +21,8 @@ const appId = firebaseConfig.appId;
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const functions = getFunctions(app);
+const synthesizeSpeech = httpsCallable(functions, 'synthesizeSpeech');
 
 // --- Helper Components & Functions ---
 const getTodayString = () => {
@@ -335,7 +338,7 @@ const AdminPage = () => {
 };
 
 // --- 2. Monitor Page ---
-const MonitorPage = () => {
+const itorPage = () => {
     const { allPatients, loading } = useAllDayPatients();
     const callingPatients = allPatients.filter(p => p.status === '呼び出し中');
     const treatmentPatients = allPatients.filter(p => p.status === '治療中');
@@ -343,7 +346,7 @@ const MonitorPage = () => {
     const [isSpeaking, setIsSpeaking] = useState(false);
     const speechQueueRef = useRef([]);
 
-    const speakNextInQueue = () => {
+   const speakNextInQueue = () => {
         if (speechQueueRef.current.length === 0) {
             setIsSpeaking(false);
             return;
@@ -352,22 +355,23 @@ const MonitorPage = () => {
         const patient = speechQueueRef.current.shift();
         const nameToSpeak = patient.furigana || patient.name;
         const textToSpeak = `${nameToSpeak}さんのお迎えのかた、${patient.bed}番ベッドへお願いします。`;
-        
-        try {
-            const utterance = new SpeechSynthesisUtterance(textToSpeak);
-            utterance.lang = 'ja-JP';
-            utterance.rate = 1.0;
-            utterance.pitch = 1.0;
-            utterance.onend = () => {
-                // 次の読み上げまで少し間を空ける
+
+        // Cloud Functionを呼び出す
+        synthesizeSpeech({ text: textToSpeak })
+            .then((result) => {
+                const audioContent = result.data.audioContent;
+                const audio = new Audio("data:audio/mp3;base64," + audioContent);
+                audio.play();
+                audio.onended = () => {
+                    // 次の読み上げまで少し間を空ける
+                    setTimeout(speakNextInQueue, 1000);
+                };
+            })
+            .catch((error) => {
+                console.error("Speech synthesis failed:", error);
+                // エラーが発生しても次のキューに進む
                 setTimeout(speakNextInQueue, 1000);
-            };
-            window.speechSynthesis.speak(utterance);
-        } catch (e) {
-            console.error("音声読み上げに失敗しました:", e);
-            // エラーが発生しても次のキューに進む
-            setTimeout(speakNextInQueue, 1000);
-        }
+            });
     };
 
     useEffect(() => {
