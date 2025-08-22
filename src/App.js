@@ -386,7 +386,7 @@ const MonitorPage = () => {
         }
         
         prevCallingPatientIdsRef.current = currentCallingIds;
-    }, [callingPatients]);
+    }, [callingPatients, isSpeaking, speakNextInQueue]); // <-- 依存配列に2つ追加
 
     if (loading) return <LoadingSpinner text="モニターデータを読み込み中..." />;
 
@@ -505,7 +505,7 @@ const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) =
                     <div className="flex items-center">
                         {onGoBack && (
                            <button onClick={onGoBack} className="mr-4 flex items-center text-sm text-gray-600 hover:text-blue-600 transition">
-                               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24" stroke="currentColor">
+                               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                                </svg>
                                <span className="hidden sm:inline ml-1">戻る</span>
