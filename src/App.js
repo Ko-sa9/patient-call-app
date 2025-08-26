@@ -367,7 +367,7 @@ const MonitorPage = () => {
         }
         
         // Cloud Functionを呼び出す
-        synthesizeSpeech({ text: textToSpeak })
+        synthesizeSpeech({ data: { text: textToSpeak } })
             .then((result) => {
                 const audioContent = result.data.audioContent;
                 const audio = new Audio("data:audio/mp3;base64," + audioContent);
