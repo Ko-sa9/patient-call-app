@@ -356,6 +356,10 @@ const MonitorPage = () => {
         const nameToSpeak = patient.furigana || patient.name;
         const textToSpeak = `${nameToSpeak}さんのお迎えのかた、${patient.bed}番ベッドへお願いします。`;
 
+        // ▼▼▼ この2行のログを追加 ▼▼▼
+        console.log("Speech Queue - Patient Object:", patient);
+        console.log("Speech Queue - Text to Speak:", textToSpeak);
+        
         // ▼▼▼ この3行を追加 ▼▼▼
         if (!textToSpeak || textToSpeak.trim() === "") {
             setTimeout(speakNextInQueue, 1000);
