@@ -21,12 +21,8 @@ const appId = firebaseConfig.appId;
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const functions = getFunctions(app);
+const functions = getFunctions(app, 'us-central1'); // <-- 地域を指定
 const synthesizeSpeech = httpsCallable(functions, 'synthesizeSpeech');
-
-// ▼▼▼ この2行のログを追加 ▼▼▼
-console.log("Firebase Config Object:", firebaseConfig);
-console.log("Firebase App Instance:", app);
 
 // --- Helper Components & Functions ---
 const getTodayString = () => {
