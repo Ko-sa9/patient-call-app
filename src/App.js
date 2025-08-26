@@ -24,6 +24,10 @@ const db = getFirestore(app);
 const functions = getFunctions(app);
 const synthesizeSpeech = httpsCallable(functions, 'synthesizeSpeech');
 
+// ▼▼▼ この2行のログを追加 ▼▼▼
+console.log("Firebase Config Object:", firebaseConfig);
+console.log("Firebase App Instance:", app);
+
 // --- Helper Components & Functions ---
 const getTodayString = () => {
     const today = new Date();
