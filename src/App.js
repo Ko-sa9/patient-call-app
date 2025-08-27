@@ -2,10 +2,11 @@ import React, { useState, useEffect, createContext, useContext, useRef } from 'r
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions'; 
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
-    apiKey: "AIzaSyBTL-HLYX6dv3wpD8CMtzY1aDC2h2vW7Ec",
+    apiKey: process.env.REACT_APP_FIREBASE_API_KEY, // ← Netlifyの環境変数から読み込む
     authDomain: "patient-call-app-f5e7f.firebaseapp.com",
     projectId: "patient-call-app-f5e7f",
     storageBucket: "patient-call-app-f5e7f.firebasestorage.app",
@@ -20,6 +21,8 @@ const appId = firebaseConfig.appId;
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const functions = getFunctions(app, 'us-central1'); // <-- 地域を指定
+const synthesizeSpeech = httpsCallable(functions, 'synthesizeSpeech');
 
 // --- Helper Components & Functions ---
 const getTodayString = () => {
@@ -336,6 +339,7 @@ const AdminPage = () => {
 
 // --- 2. Monitor Page ---
 const MonitorPage = () => {
+    // ▼▼▼ すべてのロジックは、コンポーネントの内側、先頭に配置します ▼▼▼
     const { allPatients, loading } = useAllDayPatients();
     const callingPatients = allPatients.filter(p => p.status === '呼び出し中');
     const treatmentPatients = allPatients.filter(p => p.status === '治療中');
@@ -353,21 +357,27 @@ const MonitorPage = () => {
         const nameToSpeak = patient.furigana || patient.name;
         const textToSpeak = `${nameToSpeak}さんのお迎えのかた、${patient.bed}番ベッドへお願いします。`;
         
-        try {
-            const utterance = new SpeechSynthesisUtterance(textToSpeak);
-            utterance.lang = 'ja-JP';
-            utterance.rate = 1.0;
-            utterance.pitch = 1.0;
-            utterance.onend = () => {
-                // 次の読み上げまで少し間を空ける
-                setTimeout(speakNextInQueue, 1000);
-            };
-            window.speechSynthesis.speak(utterance);
-        } catch (e) {
-            console.error("音声読み上げに失敗しました:", e);
-            // エラーが発生しても次のキューに進む
+        const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app";
+
+        fetch(functionUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: textToSpeak }),
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.audioContent) {
+                const audio = new Audio("data:audio/mp3;base64," + data.audioContent);
+                audio.play();
+                audio.onended = () => setTimeout(speakNextInQueue, 1000);
+            } else {
+                throw new Error(data.error || 'Audio content not found');
+            }
+        })
+        .catch((error) => {
+            console.error("Speech synthesis failed:", error);
             setTimeout(speakNextInQueue, 1000);
-        }
+        });
     };
 
     useEffect(() => {
@@ -382,10 +392,11 @@ const MonitorPage = () => {
         }
         
         prevCallingPatientIdsRef.current = currentCallingIds;
-    }, [callingPatients]);
-
+    }, [callingPatients, isSpeaking, speakNextInQueue]);
+    
     if (loading) return <LoadingSpinner text="モニターデータを読み込み中..." />;
-
+    
+    // ▼▼▼ return文は、一番最後にきます ▼▼▼
     return (
         <div>
             <h2 className="text-3xl font-bold mb-6 text-center text-gray-700">呼び出しモニター</h2>
@@ -393,13 +404,13 @@ const MonitorPage = () => {
                 <div className="bg-blue-100 p-6 rounded-lg shadow-lg">
                     <h3 className="text-2xl font-semibold mb-4 text-blue-800 text-center">お呼び出し</h3>
                     <div className="space-y-3 text-center">
-                        {callingPatients.length > 0 ? callingPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No. {p.bed} {p.name}様</p>)) : <p className="text-gray-500">現在、呼び出し中の患者さんはいません。</p>}
+                        {callingPatients.length > 0 ? callingPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No. {p.bed} {p.name} 様</p>)) : <p className="text-gray-500">現在、呼び出し中の患者さんはいません。</p>}
                     </div>
                 </div>
                 <div className="bg-green-100 p-6 rounded-lg shadow-lg">
                     <h3 className="text-2xl font-semibold mb-4 text-green-800 text-center">治療中</h3>
                      <div className="space-y-3 text-center">
-                        {treatmentPatients.length > 0 ? treatmentPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No. {p.bed} {p.name}様</p>)) : <p className="text-gray-500">現在、治療中の患者さんはいません。</p>}
+                        {treatmentPatients.length > 0 ? treatmentPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No. {p.bed} {p.name} 様</p>)) : <p className="text-gray-500">現在、治療中の患者さんはいません。</p>}
                     </div>
                 </div>
             </div>
@@ -430,7 +441,7 @@ const StaffPage = () => {
                             <div key={p.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg shadow-sm">
                                 <div className="flex items-center">
                                     <span className="text-sm font-semibold bg-gray-200 text-gray-700 px-2 py-1 rounded mr-3">{p.cool}クール</span>
-                                    <span className="text-lg font-medium mr-4">No. {p.bed} {p.name}様</span>
+                                    <span className="text-lg font-medium mr-4">No. {p.bed} {p.name} 様</span>
                                     <StatusBadge status={p.status}/>
                                 </div>
                                 <div>
@@ -462,7 +473,7 @@ const DriverPage = () => {
                 <h3 className="text-xl font-semibold mb-4">呼び出し中の患者様</h3>
                 {callingPatients.length > 0 ? (
                     <div className="space-y-3">
-                        {callingPatients.map(p => (<div key={p.id} className="p-4 bg-blue-100 rounded-lg text-blue-800 font-semibold text-lg">No. {p.bed} {p.name}様 - お迎えをお願いします</div>))}
+                        {callingPatients.map(p => (<div key={p.id} className="p-4 bg-blue-100 rounded-lg text-blue-800 font-semibold text-lg">No. {p.bed} {p.name} 様</div>))}
                     </div>
                 ) : (<p className="text-gray-500 text-center py-4">現在、呼び出し中の患者さんはいません。</p>)}
             </div>
@@ -501,7 +512,7 @@ const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) =
                     <div className="flex items-center">
                         {onGoBack && (
                            <button onClick={onGoBack} className="mr-4 flex items-center text-sm text-gray-600 hover:text-blue-600 transition">
-                               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24" stroke="currentColor">
+                               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                                </svg>
                                <span className="hidden sm:inline ml-1">戻る</span>
