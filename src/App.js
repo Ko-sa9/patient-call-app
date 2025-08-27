@@ -338,15 +338,7 @@ const AdminPage = () => {
 };
 
 // --- 2. Monitor Page ---
-const MonitorPage = () => {
-    const { allPatients, loading } = useAllDayPatients();
-    const callingPatients = allPatients.filter(p => p.status === '呼び出し中');
-    const treatmentPatients = allPatients.filter(p => p.status === '治療中');
-    const prevCallingPatientIdsRef = useRef(new Set());
-    const [isSpeaking, setIsSpeaking] = useState(false);
-    const speechQueueRef = useRef([]);
-
-   const speakNextInQueue = () => {
+const speakNextInQueue = () => {
         if (speechQueueRef.current.length === 0) {
             setIsSpeaking(false);
             return;
@@ -356,32 +348,28 @@ const MonitorPage = () => {
         const nameToSpeak = patient.furigana || patient.name;
         const textToSpeak = `${nameToSpeak}さんのお迎えのかた、${patient.bed}番ベッドへお願いします。`;
 
-        // ▼▼▼ この2行のログを追加 ▼▼▼
-        console.log("Speech Queue - Patient Object:", patient);
-        console.log("Speech Queue - Text to Speak:", textToSpeak);
-        
-        // ▼▼▼ この3行を追加 ▼▼▼
-        if (!textToSpeak || textToSpeak.trim() === "") {
-            setTimeout(speakNextInQueue, 1000);
-            return;
-        }
-        
-        // Cloud Functionを呼び出す
-        synthesizeSpeech({ data: { text: textToSpeak } })
-            .then((result) => {
-                const audioContent = result.data.audioContent;
-                const audio = new Audio("data:audio/mp3;base64," + audioContent);
+        // ★★★ この関数のURLは、次のステップで取得します ★★★
+        const functionUrl = "ここにCloud FunctionのURLを貼り付け";
+
+        fetch(functionUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: textToSpeak }),
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.audioContent) {
+                const audio = new Audio("data:audio/mp3;base64," + data.audioContent);
                 audio.play();
-                audio.onended = () => {
-                    // 次の読み上げまで少し間を空ける
-                    setTimeout(speakNextInQueue, 1000);
-                };
-            })
-            .catch((error) => {
-                console.error("Speech synthesis failed:", error);
-                // エラーが発生しても次のキューに進む
-                setTimeout(speakNextInQueue, 1000);
-            });
+                audio.onended = () => setTimeout(speakNextInQueue, 1000);
+            } else {
+                throw new Error(data.error || 'Audio content not found');
+            }
+        })
+        .catch((error) => {
+            console.error("Speech synthesis failed:", error);
+            setTimeout(speakNextInQueue, 1000);
+        });
     };
 
     useEffect(() => {
