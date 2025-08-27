@@ -441,7 +441,7 @@ const StaffPage = () => {
                             <div key={p.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg shadow-sm">
                                 <div className="flex items-center">
                                     <span className="text-sm font-semibold bg-gray-200 text-gray-700 px-2 py-1 rounded mr-3">{p.cool}クール</span>
-                                    <span className="text-lg font-medium mr-4">No. {p.bed} {p.name}様</span>
+                                    <span className="text-lg font-medium mr-4">No. {p.bed} {p.name} 様</span>
                                     <StatusBadge status={p.status}/>
                                 </div>
                                 <div>
