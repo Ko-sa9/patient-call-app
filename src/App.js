@@ -349,7 +349,7 @@ const speakNextInQueue = () => {
         const textToSpeak = `${nameToSpeak}さんのお迎えのかた、${patient.bed}番ベッドへお願いします。`;
 
         // ★★★ この関数のURLは、次のステップで取得します ★★★
-        const functionUrl = "ここにCloud FunctionのURLを貼り付け";
+        const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app";
 
         fetch(functionUrl, {
             method: 'POST',
