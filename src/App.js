@@ -338,7 +338,16 @@ const AdminPage = () => {
 };
 
 // --- 2. Monitor Page ---
-const speakNextInQueue = () => {
+const MonitorPage = () => {
+    // ▼▼▼ すべてのロジックは、コンポーネントの内側、先頭に配置します ▼▼▼
+    const { allPatients, loading } = useAllDayPatients();
+    const callingPatients = allPatients.filter(p => p.status === '呼び出し中');
+    const treatmentPatients = allPatients.filter(p => p.status === '治療中');
+    const prevCallingPatientIdsRef = useRef(new Set());
+    const [isSpeaking, setIsSpeaking] = useState(false);
+    const speechQueueRef = useRef([]);
+
+    const speakNextInQueue = () => {
         if (speechQueueRef.current.length === 0) {
             setIsSpeaking(false);
             return;
@@ -347,8 +356,7 @@ const speakNextInQueue = () => {
         const patient = speechQueueRef.current.shift();
         const nameToSpeak = patient.furigana || patient.name;
         const textToSpeak = `${nameToSpeak}さんのお迎えのかた、${patient.bed}番ベッドへお願いします。`;
-
-        // ★★★ この関数のURLは、次のステップで取得します ★★★
+        
         const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app";
 
         fetch(functionUrl, {
@@ -384,10 +392,11 @@ const speakNextInQueue = () => {
         }
         
         prevCallingPatientIdsRef.current = currentCallingIds;
-    }, [callingPatients, isSpeaking, speakNextInQueue]); // <-- 依存配列に2つ追加
-
+    }, [callingPatients, isSpeaking, speakNextInQueue]);
+    
     if (loading) return <LoadingSpinner text="モニターデータを読み込み中..." />;
-
+    
+    // ▼▼▼ return文は、一番最後にきます ▼▼▼
     return (
         <div>
             <h2 className="text-3xl font-bold mb-6 text-center text-gray-700">呼び出しモニター</h2>
