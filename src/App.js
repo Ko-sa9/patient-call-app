@@ -324,10 +324,52 @@ const AdminPage = () => {
                     </tr>))}</tbody></table></div>) : <p className="text-center py-8 text-gray-500">リストが空です。上記ボタンから患者を読み込んでください。</p>)}
             </div>
             <div className="bg-white p-6 rounded-lg shadow">
-                 <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="text-xl font-semibold text-gray-800">通常患者マスタ ({selectedFacility})</h3><button onClick={() => handleOpenMasterModal()} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">新規患者登録</button></div>
-                {loadingMaster ? <LoadingSpinner /> : ( <div className="overflow-x-auto"><table className="min-w-full bg-white"><thead className="bg-gray-100"><tr><th className="py-3 px-4 text-left">ベッド番号</th><th className="py-3 px-4 text-left">氏名</th><th className="py-3 px-4 text-left">ふりがな</th><th className="py-3 px-4 text-left">曜日</th><th className="py-3 px-4 text-left">クール</th><th className="py-3 px-4 text-left">操作</th></tr></thead><tbody>
-                    {masterPatients.length > 0 ? masterPatients.sort((a, b) => a.bed.localeCompare(b.bed, undefined, {numeric: true})).map(p => (<tr key={p.id} className="border-b hover:bg-gray-50"><td className="py-3 px-4">{p.bed}</td><td className="py-3 px-4">{p.name}</td><td className="py-3 px-4">{p.furigana}</td><td className="py-3 px-4">{p.day}</td><td className="py-3 px-4">{p.cool}</td><td className="py-3 px-4 space-x-2"><button onClick={() => handleOpenMasterModal(p)} className="text-sm bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded">編集</button><button onClick={() => handleDeleteMasterClick(p.id)} className="text-sm bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded">削除</button></td></tr>)) : <tr><td colSpan="6" className="text-center py-8 text-gray-500">この施設にはまだ患者が登録されていません。</td></tr>}
-                </tbody></table></div>)}
+                <div className="flex justify-between items-center mb-4 border-b pb-2">
+                    <h3 className="text-xl font-semibold text-gray-800">通常患者マスタ (全クール)</h3>
+                    <button onClick={() => handleOpenMasterModal()} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">新規患者登録</button>
+                </div>
+                {loadingMaster ? <LoadingSpinner /> : (
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full bg-white">
+                            <thead className="bg-gray-100">
+                                <tr>
+                                    <th className="py-3 px-4 text-left">クール</th>
+                                    <th className="py-3 px-4 text-left">ベッド番号</th>
+                                    <th className="py-3 px-4 text-left">氏名</th>
+                                    <th className="py-3 px-4 text-left">ふりがな</th>
+                                    <th className="py-3 px-4 text-left">曜日</th>
+                                    <th className="py-3 px-4 text-left">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {masterPatients.length > 0 ? 
+                                    masterPatients.sort((a, b) => {
+                                        const coolCompare = a.cool.localeCompare(b.cool, undefined, { numeric: true });
+                                        if (coolCompare !== 0) {
+                                            return coolCompare;
+                                        }
+                                        return a.bed.localeCompare(b.bed, undefined, { numeric: true });
+                                    }).map(p => (
+                                        <tr key={p.id} className="border-b hover:bg-gray-50">
+                                            <td className="py-3 px-4">{p.cool}</td>
+                                            <td className="py-3 px-4">{p.bed}</td>
+                                            <td className="py-3 px-4">{p.name}</td>
+                                            <td className="py-3 px-4">{p.furigana}</td>
+                                            <td className="py-3 px-4">{p.day}</td>
+                                            <td className="py-3 px-4 space-x-2">
+                                                <button onClick={() => handleOpenMasterModal(p)} className="text-sm bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded">編集</button>
+                                                <button onClick={() => handleDeleteMasterClick(p.id)} className="text-sm bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded">削除</button>
+                                            </td>
+                                        </tr>
+                                    )) : 
+                                    <tr>
+                                        <td colSpan="6" className="text-center py-8 text-gray-500">この施設にはまだ患者が登録されていません。</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         </div>
     );
