@@ -325,7 +325,7 @@ const AdminPage = () => {
             </div>
             <div className="bg-white p-6 rounded-lg shadow">
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
-                    <h3 className="text-xl font-semibold text-gray-800">通常患者マスタ (全クール)</h3>
+                    <h3 className="text-xl font-semibold text-gray-800">通常患者マスタ ({selectedFacility})</h3>
                     <button onClick={() => handleOpenMasterModal()} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">新規患者登録</button>
                 </div>
                 {loadingMaster ? <LoadingSpinner /> : (
