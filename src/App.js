@@ -1,28 +1,24 @@
 import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions'; 
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
-    apiKey: process.env.REACT_APP_FIREBASE_API_KEY, // ← Netlifyの環境変数から読み込む
-    authDomain: "patient-call-app-f5e7f.firebaseapp.com",
-    projectId: "patient-call-app-f5e7f",
-    storageBucket: "patient-call-app-f5e7f.firebasestorage.app",
-    messagingSenderId: "545799005149",
-    appId: "1:545799005149:web:f1b22a42040eb455e98c34"
-  };  
-
-// ▼▼▼ この行を追加 ▼▼▼
-const appId = firebaseConfig.appId; 
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY, // Netlifyの環境変数から安全に読み込み
+  authDomain: "patient-call-app-f5e7f.firebaseapp.com",
+  projectId: "patient-call-app-f5e7f",
+  storageBucket: "patient-call-app-f5e7f.appspot.com",
+  messagingSenderId: "545799005149",
+  appId: "1:545799005149:web:f1b22a42040eb455e98c34"
+};
 
 // --- Initialize Firebase ---
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const functions = getFunctions(app, 'us-central1'); // <-- 地域を指定
-const synthesizeSpeech = httpsCallable(functions, 'synthesizeSpeech');
+const functions = getFunctions(app, 'us-central1'); // Cloud Functionのリージョンを明示的に指定
 
 // --- Helper Components & Functions ---
 const getTodayString = () => {
@@ -56,7 +52,6 @@ const AppContext = createContext();
 const FACILITIES = ["本院透析室", "坂田透析棟", "じんクリニック", "木更津クリニック"];
 
 // --- Custom Hooks ---
-// 特定のクールの患者リストを取得するフック
 const useDailyList = () => {
     const { selectedFacility, selectedDate, selectedCool } = useContext(AppContext);
     const [dailyList, setDailyList] = useState([]);
@@ -69,7 +64,7 @@ const useDailyList = () => {
         }
         setLoading(true);
         const dailyListId = `${selectedDate}_${selectedFacility}_${selectedCool}`;
-        const dailyPatientsCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'daily_lists', dailyListId, 'patients');
+        const dailyPatientsCollectionRef = collection(db, 'daily_lists', dailyListId, 'patients');
         
         const q = query(dailyPatientsCollectionRef);
 
@@ -88,7 +83,6 @@ const useDailyList = () => {
     return { dailyList, loading };
 };
 
-// 全クールの患者リストを統合して取得するフック
 const useAllDayPatients = () => {
     const { selectedFacility, selectedDate } = useContext(AppContext);
     const [allPatients, setAllPatients] = useState([]);
@@ -119,7 +113,7 @@ const useAllDayPatients = () => {
 
         cools.forEach(cool => {
             const dailyListId = `${selectedDate}_${selectedFacility}_${cool}`;
-            const dailyPatientsCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'daily_lists', dailyListId, 'patients');
+            const dailyPatientsCollectionRef = collection(db, 'daily_lists', dailyListId, 'patients');
             const q = query(dailyPatientsCollectionRef);
 
             const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -152,7 +146,7 @@ const useAllDayPatients = () => {
 // --- Status Update Function ---
 const updatePatientStatus = async (facility, date, cool, patientId, newStatus) => {
     const dailyListId = `${date}_${facility}_${cool}`;
-    const patientDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'daily_lists', dailyListId, 'patients', patientId);
+    const patientDocRef = doc(db, 'daily_lists', dailyListId, 'patients', patientId);
     try {
         await updateDoc(patientDocRef, {
             status: newStatus,
@@ -197,8 +191,8 @@ const AdminPage = () => {
     const [confirmClearListModal, setConfirmClearListModal] = useState({ isOpen: false });
 
 
-    const masterPatientsCollectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'patients');
-    const dailyPatientsCollectionRef = (cool) => collection(db, 'artifacts', appId, 'public', 'data', 'daily_lists', `${selectedDate}_${selectedFacility}_${cool}`, 'patients');
+    const masterPatientsCollectionRef = collection(db, 'patients');
+    const dailyPatientsCollectionRef = (cool) => collection(db, 'daily_lists', `${selectedDate}_${selectedFacility}_${cool}`, 'patients');
 
     useEffect(() => {
         setLoadingMaster(true);
@@ -255,7 +249,7 @@ const AdminPage = () => {
                 if (masterSnapshot.empty) { alert("対象となる患者さんがマスタに登録されていません。"); setLoadingMaster(false); return; }
                 const batch = writeBatch(db);
                 const dailyListId = `${selectedDate}_${selectedFacility}_${selectedCool}`;
-                const listDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'daily_lists', dailyListId);
+                const listDocRef = doc(db, 'daily_lists', dailyListId);
                 batch.set(listDocRef, { createdAt: serverTimestamp(), facility: selectedFacility, date: selectedDate, cool: selectedCool });
                 masterSnapshot.forEach(patientDoc => {
                     const patientData = patientDoc.data();
@@ -293,7 +287,7 @@ const AdminPage = () => {
     return (
         <div className="space-y-8">
             {masterModalOpen && <CustomModal title={editingMasterPatient ? "患者情報の編集" : "新規患者登録"} onClose={handleCloseMasterModal} footer={<><button onClick={handleCloseMasterModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleMasterSubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleMasterSubmit} className="space-y-4"><div><label className="block font-medium mb-1">氏名</label><input type="text" name="name" value={masterFormData.name} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" required /></div><div><label className="block font-medium mb-1">ふりがな</label><input type="text" name="furigana" value={masterFormData.furigana} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="例：やまだ たろう" /></div><div><label className="block font-medium mb-1">ベッド番号</label><input type="text" name="bed" value={masterFormData.bed} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" required /></div><div><label className="block font-medium mb-1">曜日</label><select name="day" value={masterFormData.day} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="月水金">月水金</option><option value="火木土">火木土</option></select></div><div><label className="block font-medium mb-1">クール</label><select name="cool" value={masterFormData.cool} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div></form></CustomModal>}
-            {dailyModalOpen && <CustomModal title={editingDailyPatient ? "臨時情報の編集" : "臨時患者の追加"} onClose={handleCloseDailyModal} footer={<><button onClick={handleCloseDailyModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleDailySubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleDailySubmit} className="space-y-4"><div><label className="block font-medium mb-1">氏名</label><input type="text" name="name" value={dailyFormData.name} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /><div> <label className="block font-medium mb-1">ふりがな</label><input type="text" name="furigana" value={dailyFormData.furigana} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" placeholder="例：りんじ たろう"/></div></div><div><label className="block font-medium mb-1">ベッド番号</label><input type="text" name="bed" value={dailyFormData.bed} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /></div></form></CustomModal>}
+            {dailyModalOpen && <CustomModal title={editingDailyPatient ? "臨時情報の編集" : "臨時患者の追加"} onClose={handleCloseDailyModal} footer={<><button onClick={handleCloseDailyModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleDailySubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleDailySubmit} className="space-y-4"><div><label className="block font-medium mb-1">氏名</label><input type="text" name="name" value={dailyFormData.name} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /></div><div><label className="block font-medium mb-1">ふりがな</label><input type="text" name="furigana" value={dailyFormData.furigana} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" placeholder="例：りんじ たろう"/></div><div><label className="block font-medium mb-1">ベッド番号</label><input type="text" name="bed" value={dailyFormData.bed} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /></div></form></CustomModal>}
             {confirmMasterDelete.isOpen && <ConfirmationModal title="マスタから削除" message="この患者情報をマスタから完全に削除しますか？" onConfirm={handleConfirmMasterDelete} onCancel={() => setConfirmMasterDelete({ isOpen: false, patientId: null })} confirmText="削除" confirmColor="red" />}
             {confirmDailyDelete.isOpen && <ConfirmationModal title="リストから削除" message="この患者を本日のリストから削除しますか？マスタ登録は残ります。" onConfirm={handleConfirmDailyDelete} onCancel={() => setConfirmDailyDelete({ isOpen: false, patientId: null })} confirmText="削除" confirmColor="red" />}
             {confirmLoadModal.isOpen && <ConfirmationModal title="読み込みの確認" message="既にリストが存在します。上書きしてマスタから再読み込みしますか？" onConfirm={confirmLoadModal.onConfirm} onCancel={() => setConfirmLoadModal({ isOpen: false, onConfirm: () => {} })} confirmText="再読み込み" confirmColor="blue" />}
@@ -314,9 +308,9 @@ const AdminPage = () => {
                     </div>
                  </div>
                  {loadingDaily ? <LoadingSpinner /> : ( dailyList.length > 0 ? ( <div className="overflow-x-auto"><table className="min-w-full bg-white">
-                    <thead className="bg-gray-100"><tr><th className="py-3 px-4 text-left">氏名</th><th className="py-3 px-4 text-left">ベッド番号</th><th className="py-3 px-4 text-left">状態</th><th className="py-3 px-4 text-left">操作</th></tr></thead>
-                    <tbody>{dailyList.map(p => (<tr key={p.id} className="border-b hover:bg-gray-50">
-                        <td className="py-3 px-4">{p.name}{p.isTemporary && <span className="ml-2 text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">臨時</span>}</td><td className="py-3 px-4">{p.bed}</td><td className="py-3 px-4"><StatusBadge status={p.status} /></td>
+                    <thead className="bg-gray-100"><tr><th className="py-3 px-4 text-left">ベッド番号</th><th className="py-3 px-4 text-left">氏名</th><th className="py-3 px-4 text-left">状態</th><th className="py-3 px-4 text-left">操作</th></tr></thead>
+                    <tbody>{dailyList.sort((a, b) => a.bed.localeCompare(b.bed, undefined, {numeric: true})).map(p => (<tr key={p.id} className="border-b hover:bg-gray-50">
+                        <td className="py-3 px-4">{p.bed}</td><td className="py-3 px-4">{p.name}{p.isTemporary && <span className="ml-2 text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">臨時</span>}</td><td className="py-3 px-4"><StatusBadge status={p.status} /></td>
                         <td className="py-3 px-4 space-x-2 whitespace-nowrap">
                            {p.status === '治療中' && <button onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '呼び出し中')} className="text-sm bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded">呼出</button>}
                            {p.status === '呼び出し中' && <><button onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '退出済')} className="text-sm bg-purple-500 hover:bg-purple-600 text-white py-1 px-3 rounded">退出</button><button onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="text-sm bg-gray-500 hover:bg-gray-600 text-white py-1 px-3 rounded">キャンセル</button></>}
@@ -326,12 +320,54 @@ const AdminPage = () => {
                         </td>
                     </tr>))}</tbody></table></div>) : <p className="text-center py-8 text-gray-500">リストが空です。上記ボタンから患者を読み込んでください。</p>)}
             </div>
-
+            
             <div className="bg-white p-6 rounded-lg shadow">
-                 <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="text-xl font-semibold text-gray-800">通常患者マスタ ({selectedFacility})</h3><button onClick={() => handleOpenMasterModal()} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">新規患者登録</button></div>
-                {loadingMaster ? <LoadingSpinner /> : ( <div className="overflow-x-auto"><table className="min-w-full bg-white"><thead className="bg-gray-100"><tr><th className="py-3 px-4 text-left">氏名</th><th className="py-3 px-4 text-left">ふりがな</th><th className="py-3 px-4 text-left">ベッド番号</th><th className="py-3 px-4 text-left">曜日</th><th className="py-3 px-4 text-left">クール</th><th className="py-3 px-4 text-left">操作</th></tr></thead><tbody>
-                    {masterPatients.length > 0 ? masterPatients.map(p => (<tr key={p.id} className="border-b hover:bg-gray-50"><td className="py-3 px-4">{p.name}</td><td className="py-3 px-4">{p.furigana}</td><td className="py-3 px-4">{p.bed}</td><td className="py-3 px-4">{p.day}</td><td className="py-3 px-4">{p.cool}</td><td className="py-3 px-4 space-x-2"><button onClick={() => handleOpenMasterModal(p)} className="text-sm bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded">編集</button><button onClick={() => handleDeleteMasterClick(p.id)} className="text-sm bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded">削除</button></td></tr>)) : <tr><td colSpan="6" className="text-center py-8 text-gray-500">この施設にはまだ患者が登録されていません。</td></tr>}
-                </tbody></table></div>)}
+                <div className="flex justify-between items-center mb-4 border-b pb-2">
+                    <h3 className="text-xl font-semibold text-gray-800">通常患者マスタ (全クール)</h3>
+                    <button onClick={() => handleOpenMasterModal()} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">新規患者登録</button>
+                </div>
+                {loadingMaster ? <LoadingSpinner /> : (
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full bg-white">
+                            <thead className="bg-gray-100">
+                                <tr>
+                                    <th className="py-3 px-4 text-left">クール</th>
+                                    <th className="py-3 px-4 text-left">ベッド番号</th>
+                                    <th className="py-3 px-4 text-left">氏名</th>
+                                    <th className="py-3 px-4 text-left">ふりがな</th>
+                                    <th className="py-3 px-4 text-left">曜日</th>
+                                    <th className="py-3 px-4 text-left">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {masterPatients.length > 0 ? 
+                                    masterPatients.sort((a, b) => {
+                                        const coolCompare = a.cool.localeCompare(b.cool, undefined, { numeric: true });
+                                        if (coolCompare !== 0) {
+                                            return coolCompare;
+                                        }
+                                        return a.bed.localeCompare(b.bed, undefined, { numeric: true });
+                                    }).map(p => (
+                                        <tr key={p.id} className="border-b hover:bg-gray-50">
+                                            <td className="py-3 px-4">{p.cool}</td>
+                                            <td className="py-3 px-4">{p.bed}</td>
+                                            <td className="py-3 px-4">{p.name}</td>
+                                            <td className="py-3 px-4">{p.furigana}</td>
+                                            <td className="py-3 px-4">{p.day}</td>
+                                            <td className="py-3 px-4 space-x-2">
+                                                <button onClick={() => handleOpenMasterModal(p)} className="text-sm bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded">編集</button>
+                                                <button onClick={() => handleDeleteMasterClick(p.id)} className="text-sm bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded">削除</button>
+                                            </td>
+                                        </tr>
+                                    )) : 
+                                    <tr>
+                                        <td colSpan="6" className="text-center py-8 text-gray-500">この施設にはまだ患者が登録されていません。</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -339,7 +375,6 @@ const AdminPage = () => {
 
 // --- 2. Monitor Page ---
 const MonitorPage = () => {
-    // ▼▼▼ すべてのロジックは、コンポーネントの内側、先頭に配置します ▼▼▼
     const { allPatients, loading } = useAllDayPatients();
     const callingPatients = allPatients.filter(p => p.status === '呼び出し中');
     const treatmentPatients = allPatients.filter(p => p.status === '治療中');
@@ -358,6 +393,11 @@ const MonitorPage = () => {
         const textToSpeak = `${nameToSpeak}さんのお迎えのかた、${patient.bed}番ベッドへお願いします。`;
         
         const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app";
+
+        if (!textToSpeak || textToSpeak.trim() === "") {
+            setTimeout(speakNextInQueue, 1000);
+            return;
+        }
 
         fetch(functionUrl, {
             method: 'POST',
@@ -396,7 +436,6 @@ const MonitorPage = () => {
     
     if (loading) return <LoadingSpinner text="モニターデータを読み込み中..." />;
     
-    // ▼▼▼ return文は、一番最後にきます ▼▼▼
     return (
         <div>
             <h2 className="text-3xl font-bold mb-6 text-center text-gray-700">呼び出しモニター</h2>
@@ -404,13 +443,13 @@ const MonitorPage = () => {
                 <div className="bg-blue-100 p-6 rounded-lg shadow-lg">
                     <h3 className="text-2xl font-semibold mb-4 text-blue-800 text-center">お呼び出し</h3>
                     <div className="space-y-3 text-center">
-                        {callingPatients.length > 0 ? callingPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No. {p.bed} {p.name} 様</p>)) : <p className="text-gray-500">現在、呼び出し中の患者さんはいません。</p>}
+                        {callingPatients.length > 0 ? callingPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No. {p.bed} {p.name}様</p>)) : <p className="text-gray-500">現在、呼び出し中の患者さんはいません。</p>}
                     </div>
                 </div>
                 <div className="bg-green-100 p-6 rounded-lg shadow-lg">
                     <h3 className="text-2xl font-semibold mb-4 text-green-800 text-center">治療中</h3>
                      <div className="space-y-3 text-center">
-                        {treatmentPatients.length > 0 ? treatmentPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No. {p.bed} {p.name} 様</p>)) : <p className="text-gray-500">現在、治療中の患者さんはいません。</p>}
+                        {treatmentPatients.length > 0 ? treatmentPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No. {p.bed} {p.name}様</p>)) : <p className="text-gray-500">現在、治療中の患者さんはいません。</p>}
                     </div>
                 </div>
             </div>
@@ -418,6 +457,7 @@ const MonitorPage = () => {
         </div>
     );
 };
+
 
 // --- 3. Staff Page ---
 const StaffPage = () => {
@@ -441,7 +481,7 @@ const StaffPage = () => {
                             <div key={p.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg shadow-sm">
                                 <div className="flex items-center">
                                     <span className="text-sm font-semibold bg-gray-200 text-gray-700 px-2 py-1 rounded mr-3">{p.cool}クール</span>
-                                    <span className="text-lg font-medium mr-4">No. {p.bed} {p.name} 様</span>
+                                    <span className="text-lg font-medium mr-4">No. {p.bed} {p.name}様</span>
                                     <StatusBadge status={p.status}/>
                                 </div>
                                 <div>
@@ -473,7 +513,7 @@ const DriverPage = () => {
                 <h3 className="text-xl font-semibold mb-4">呼び出し中の患者様</h3>
                 {callingPatients.length > 0 ? (
                     <div className="space-y-3">
-                        {callingPatients.map(p => (<div key={p.id} className="p-4 bg-blue-100 rounded-lg text-blue-800 font-semibold text-lg">No. {p.bed} {p.name} 様</div>))}
+                        {callingPatients.map(p => (<div key={p.id} className="p-4 bg-blue-100 rounded-lg text-blue-800 font-semibold text-lg">No. {p.bed} {p.name}様 - お迎えをお願いします</div>))}
                     </div>
                 ) : (<p className="text-gray-500 text-center py-4">現在、呼び出し中の患者さんはいません。</p>)}
             </div>
@@ -507,7 +547,7 @@ const GlobalControls = ({ hideCoolSelector = false }) => {
 const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) => (
     <div className="min-h-screen bg-gray-50 font-sans">
         <nav className="bg-white shadow-md p-3 sm:p-4 mb-8 sticky top-0 z-40">
-            <div className="max-w-7xl mx-auto">
+            <div className="mx-auto px-4">
                 <div className="flex flex-wrap justify-between items-center">
                     <div className="flex items-center">
                         {onGoBack && (
@@ -527,8 +567,8 @@ const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) =
                 <GlobalControls hideCoolSelector={hideCoolSelector} />
             </div>
         </nav>
-        <main className="max-w-7xl mx-auto px-4 pb-8">{children}</main>
-         <footer className="text-center text-sm text-gray-500 py-6 mt-8 border-t"><p>ユーザーID: <span className="font-mono text-xs">{user.uid}</span></p></footer>
+        <main className="mx-auto px-4 pb-8">{children}</main>
+         <footer className="text-center text-sm text-gray-500 py-6 mt-8 border-t"><p>ユーザーID: <span className="font-mono text-xs">{user?.uid}</span></p></footer>
     </div>
 );
 
