@@ -308,17 +308,36 @@ const AdminPage = () => {
                     </div>
                  </div>
                  {loadingDaily ? <LoadingSpinner /> : ( dailyList.length > 0 ? ( <div className="overflow-x-auto"><table className="min-w-full bg-white">
-                    <thead className="bg-gray-100"><tr><th className="py-3 px-4 text-left">ベッド番号</th><th className="py-3 px-4 text-left">氏名</th><th className="py-3 px-4 text-left">状態</th><th className="py-3 px-4 text-left">操作</th></tr></thead>
-                    <tbody>{dailyList.sort((a, b) => a.bed.localeCompare(b.bed, undefined, {numeric: true})).map(p => (<tr key={p.id} className="border-b hover:bg-gray-50">
-                        <td className="py-3 px-4">{p.bed}</td><td className="py-3 px-4">{p.name}{p.isTemporary && <span className="ml-2 text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">臨時</span>}</td><td className="py-3 px-4"><StatusBadge status={p.status} /></td>
-                        <td className="py-3 px-4 space-x-2 whitespace-nowrap">
-                           {p.status === '治療中' && <button onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '呼び出し中')} className="text-sm bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded">呼出</button>}
-                           {p.status === '呼び出し中' && <><button onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '退出済')} className="text-sm bg-purple-500 hover:bg-purple-600 text-white py-1 px-3 rounded">退出</button><button onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="text-sm bg-gray-500 hover:bg-gray-600 text-white py-1 px-3 rounded">キャンセル</button></>}
-                           {p.status === '退出済' && <button onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="text-sm bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded">戻す</button>}
-                           <button onClick={() => handleOpenDailyModal(p)} className="text-sm bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded">編集</button>
-                           <button onClick={() => handleDeleteDailyClick(p.id)} className="text-sm bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded">削除</button>
-                        </td>
-                    </tr>))}</tbody></table></div>) : <p className="text-center py-8 text-gray-500">リストが空です。上記ボタンから患者を読み込んでください。</p>)}
+                    <thead className="bg-gray-100">
+                        <tr>
+                            <th className="p-2 text-left text-sm font-semibold">ベッド番号</th>
+                            <th className="p-2 text-left text-sm font-semibold">氏名</th>
+                            <th className="p-2 text-left text-sm font-semibold">状態</th>
+                            <th className="p-2 text-left text-sm font-semibold">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {dailyList.sort((a, b) => a.bed.localeCompare(b.bed, undefined, {numeric: true})).map(p => (
+                            <tr key={p.id} className="border-b hover:bg-gray-50">
+                                <td className="p-2 text-sm">{p.bed}</td>
+                                <td className="p-2 text-sm">{p.name}{p.isTemporary && <span className="ml-2 text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">臨時</span>}</td>
+                                <td className="p-2 text-sm"><StatusBadge status={p.status} /></td>
+                                <td className="p-2">
+                                    <div className="flex flex-col sm:flex-row sm:space-x-2 space-y-2 sm:space-y-0">
+                                        {p.status === '治療中' && <button onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '呼び出し中')} className="text-xs px-2 py-1 rounded bg-blue-500 hover:bg-blue-600 text-white">呼出</button>}
+                                        {p.status === '呼び出し中' && <>
+                                            <button onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '退出済')} className="text-xs px-2 py-1 rounded bg-purple-500 hover:bg-purple-600 text-white">退出</button>
+                                            <button onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="text-xs px-2 py-1 rounded bg-gray-500 hover:bg-gray-600 text-white">キャンセル</button>
+                                        </>}
+                                        {p.status === '退出済' && <button onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="text-xs px-2 py-1 rounded bg-yellow-500 hover:bg-yellow-600 text-white">戻す</button>}
+                                        <button onClick={() => handleOpenDailyModal(p)} className="text-xs px-2 py-1 rounded bg-green-500 hover:bg-green-600 text-white">編集</button>
+                                        <button onClick={() => handleDeleteDailyClick(p.id)} className="text-xs px-2 py-1 rounded bg-red-500 hover:bg-red-600 text-white">削除</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table></div>) : <p className="text-center py-8 text-gray-500">リストが空です。上記ボタンから患者を読み込んでください。</p>)}
             </div>
             
             <div className="bg-white p-6 rounded-lg shadow">
@@ -331,12 +350,12 @@ const AdminPage = () => {
                         <table className="min-w-full bg-white">
                             <thead className="bg-gray-100">
                                 <tr>
-                                    <th className="py-3 px-4 text-left">クール</th>
-                                    <th className="py-3 px-4 text-left">ベッド番号</th>
-                                    <th className="py-3 px-4 text-left">氏名</th>
-                                    <th className="py-3 px-4 text-left">ふりがな</th>
-                                    <th className="py-3 px-4 text-left">曜日</th>
-                                    <th className="py-3 px-4 text-left">操作</th>
+                                    <th className="p-2 text-left text-sm font-semibold">クール</th>
+                                    <th className="p-2 text-left text-sm font-semibold">ベッド番号</th>
+                                    <th className="p-2 text-left text-sm font-semibold">氏名</th>
+                                    <th className="p-2 text-left text-sm font-semibold">ふりがな</th>
+                                    <th className="p-2 text-left text-sm font-semibold">曜日</th>
+                                    <th className="p-2 text-left text-sm font-semibold">操作</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -349,14 +368,16 @@ const AdminPage = () => {
                                         return a.bed.localeCompare(b.bed, undefined, { numeric: true });
                                     }).map(p => (
                                         <tr key={p.id} className="border-b hover:bg-gray-50">
-                                            <td className="py-3 px-4">{p.cool}</td>
-                                            <td className="py-3 px-4">{p.bed}</td>
-                                            <td className="py-3 px-4">{p.name}</td>
-                                            <td className="py-3 px-4">{p.furigana}</td>
-                                            <td className="py-3 px-4">{p.day}</td>
-                                            <td className="py-3 px-4 space-x-2">
-                                                <button onClick={() => handleOpenMasterModal(p)} className="text-sm bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded">編集</button>
-                                                <button onClick={() => handleDeleteMasterClick(p.id)} className="text-sm bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded">削除</button>
+                                            <td className="p-2 text-sm">{p.cool}</td>
+                                            <td className="p-2 text-sm">{p.bed}</td>
+                                            <td className="p-2 text-sm">{p.name}</td>
+                                            <td className="p-2 text-sm">{p.furigana}</td>
+                                            <td className="p-2 text-sm">{p.day}</td>
+                                            <td className="p-2">
+                                                <div className="flex flex-col sm:flex-row sm:space-x-2 space-y-2 sm:space-y-0">
+                                                    <button onClick={() => handleOpenMasterModal(p)} className="text-xs px-2 py-1 rounded bg-yellow-500 hover:bg-yellow-600 text-white">編集</button>
+                                                    <button onClick={() => handleDeleteMasterClick(p.id)} className="text-xs px-2 py-1 rounded bg-red-500 hover:bg-red-600 text-white">削除</button>
+                                                </div>
                                             </td>
                                         </tr>
                                     )) : 
@@ -547,7 +568,7 @@ const GlobalControls = ({ hideCoolSelector = false }) => {
 const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) => (
     <div className="min-h-screen bg-gray-50 font-sans">
         <nav className="bg-white shadow-md p-3 sm:p-4 mb-8 sticky top-0 z-40">
-            <div className="mx-auto px-4">
+            <div className="max-w-7xl mx-auto px-4">
                 <div className="flex flex-wrap justify-between items-center">
                     <div className="flex items-center">
                         {onGoBack && (
@@ -567,7 +588,7 @@ const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) =
                 <GlobalControls hideCoolSelector={hideCoolSelector} />
             </div>
         </nav>
-        <main className="mx-auto px-4 pb-8">{children}</main>
+        <main className="max-w-7xl mx-auto px-4 pb-8">{children}</main>
          <footer className="text-center text-sm text-gray-500 py-6 mt-8 border-t"><p>ユーザーID: <span className="font-mono text-xs">{user?.uid}</span></p></footer>
     </div>
 );
