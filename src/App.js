@@ -500,27 +500,29 @@ const StaffPage = () => {
             <h2 className="text-2xl font-bold mb-4">スタッフ用端末</h2>
             <div className="bg-white p-6 rounded-lg shadow">
                 <h3 className="text-xl font-semibold mb-4">呼び出し操作 (全クール)</h3>
-                {actionPatients.length > 0 ? (
-                    <div className="space-y-3">
-                        {actionPatients.map(p => (
-                            <div key={p.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg shadow-sm">
-                                <div className="flex items-center">
-                                    <span className="text-sm font-semibold bg-gray-200 text-gray-700 px-2 py-1 rounded mr-3">{p.cool}クール</span>
-                                    <span className="text-lg font-medium mr-4">No. {p.bed} {p.name}様</span>
-                                    <StatusBadge status={p.status}/>
+                <div className="overflow-x-auto">
+                    {actionPatients.length > 0 ? (
+                        <div className="space-y-3">
+                            {actionPatients.map(p => (
+                                <div key={p.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg shadow-sm min-w-max">
+                                    <div className="flex items-center whitespace-nowrap">
+                                        <span className="text-sm font-semibold bg-gray-200 text-gray-700 px-2 py-1 rounded mr-3">{p.cool}クール</span>
+                                        <span className="text-lg font-medium mr-4">No. {p.bed} {p.name}様</span>
+                                        <StatusBadge status={p.status}/>
+                                    </div>
+                                    <div className="whitespace-nowrap pl-4">
+                                        {p.status === '治療中' && 
+                                            <button onClick={() => updatePatientStatus(selectedFacility, selectedDate, p.cool, p.id, '呼び出し中')} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-lg transition text-lg">呼出</button>
+                                        }
+                                        {p.status === '呼び出し中' &&
+                                            <button onClick={() => updatePatientStatus(selectedFacility, selectedDate, p.cool, p.id, '治療中')} className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-5 rounded-lg transition text-lg">キャンセル</button>
+                                        }
+                                    </div>
                                 </div>
-                                <div>
-                                    {p.status === '治療中' && 
-                                        <button onClick={() => updatePatientStatus(selectedFacility, selectedDate, p.cool, p.id, '呼び出し中')} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-8 rounded-lg transition text-lg">呼出</button>
-                                    }
-                                    {p.status === '呼び出し中' &&
-                                        <button onClick={() => updatePatientStatus(selectedFacility, selectedDate, p.cool, p.id, '治療中')} className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-5 rounded-lg transition text-lg">キャンセル</button>
-                                    }
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : (<p className="text-gray-500 text-center py-4">操作対象の患者さんはいません。</p>)}
+                            ))}
+                        </div>
+                    ) : (<p className="text-gray-500 text-center py-4">操作対象の患者さんはいません。</p>)}
+                </div>
             </div>
         </div>
     );
