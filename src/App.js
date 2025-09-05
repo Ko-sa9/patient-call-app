@@ -477,9 +477,9 @@ const MonitorPage = () => {
             <h2 className="text-3xl font-bold mb-6 text-center text-gray-700">呼び出しモニター</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-blue-100 p-6 rounded-lg shadow-lg">
-                    <h3 className="text-2xl font-semibold mb-4 text-blue-800 text-center">お呼び出し</h3>
+                    <h3 className="text-2xl font-semibold mb-4 text-blue-800 text-center">お呼び出し済み</h3>
                     <div className="space-y-3 text-center">
-                        {callingPatients.length > 0 ? callingPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No.{p.bed} {p.name} 様</p>)) : <p className="text-gray-500">現在、呼出中の患者さんはいません。</p>}
+                        {callingPatients.length > 0 ? callingPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No.{p.bed} {p.name} 様</p>)) : <p className="text-gray-500">現在、お呼び出し済みの患者さんはいません。</p>}
                     </div>
                 </div>
                 <div className="bg-green-100 p-6 rounded-lg shadow-lg">
@@ -552,12 +552,12 @@ const DriverPage = () => {
         <div>
             <h2 className="text-2xl font-bold mb-4">送迎担当者用画面</h2>
             <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-xl font-semibold mb-4">お呼び出し中の患者様</h3>
+                <h3 className="text-xl font-semibold mb-4">お呼び出し済みの患者様</h3>
                 {callingPatients.length > 0 ? (
                     <div className="space-y-3">
                         {callingPatients.map(p => (<div key={p.id} className="p-4 bg-blue-100 rounded-lg text-blue-800 font-semibold text-lg">No.{p.bed} {p.name} 様</div>))}
                     </div>
-                ) : (<p className="text-gray-500 text-center py-4">現在、お呼び出し中の患者さんはいません。</p>)}
+                ) : (<p className="text-gray-500 text-center py-4">現在、お呼び出し済みの患者さんはいません。</p>)}
             </div>
         </div>
     );
