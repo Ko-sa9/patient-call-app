@@ -322,6 +322,7 @@ const AdminPage = () => {
                                 <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">状態</th>
                                 <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">ベッド番号</th>
                                 <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">氏名</th>
+                                <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">ふりがな</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -342,6 +343,7 @@ const AdminPage = () => {
                                     <td className="p-2 text-sm whitespace-nowrap"><StatusBadge status={p.status} /></td>
                                     <td className="p-2 text-sm whitespace-nowrap">{p.bed}</td>
                                     <td className="p-2 text-sm whitespace-nowrap">{p.name}{p.isTemporary && <span className="ml-2 text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">臨時</span>}</td>
+                                    <td className="p-2 text-sm whitespace-nowrap">{p.furigana}</td>
                                 </tr>
                             ))}
                         </tbody>
