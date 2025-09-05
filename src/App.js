@@ -301,7 +301,7 @@ const AdminPage = () => {
 
             <div className="bg-white p-6 rounded-lg shadow">
                  <div className="flex justify-between items-center mb-4 border-b pb-2">
-                    <h3 className="text-xl font-semibold text-gray-800">呼び出しリスト ({selectedCool}クール)</h3>
+                    <h3 className="text-xl font-semibold text-gray-800">リスト({selectedCool}クール)</h3>
                     <div className="flex items-center space-x-2">
                         <button onClick={() => handleOpenDailyModal(null)} className="flex items-center space-x-2 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
