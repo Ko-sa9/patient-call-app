@@ -294,14 +294,14 @@ const AdminPage = () => {
             {confirmClearListModal.isOpen && <ConfirmationModal title="リストの一括削除" message={`【${selectedFacility} | ${selectedDate} | ${selectedCool}クール】のリストを完全に削除します。よろしいですか？`} onConfirm={handleClearDailyList} onCancel={() => setConfirmClearListModal({ isOpen: false })} confirmText="一括削除" confirmColor="red" />}
 
             <div className="bg-white p-6 rounded-lg shadow-md">
-                <h3 className="text-xl font-semibold text-gray-800 border-b pb-3 mb-4">本日の呼び出しリスト作成</h3>
+                <h3 className="text-xl font-semibold text-gray-800 border-b pb-3 mb-4">呼び出しリスト作成</h3>
                 <p className="text-gray-600 mb-4">グローバル設定（画面上部）で施設・日付・クールを選択し、下のボタンで対象患者を読み込みます。</p>
                 <button onClick={handleLoadPatients} className="w-full md:w-auto bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg transition">対象患者を読み込み</button>
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow">
                  <div className="flex justify-between items-center mb-4 border-b pb-2">
-                    <h3 className="text-xl font-semibold text-gray-800">本日の呼び出しリスト ({selectedCool}クール)</h3>
+                    <h3 className="text-xl font-semibold text-gray-800">呼び出しリスト ({selectedCool}クール)</h3>
                     <div className="flex items-center space-x-2">
                         <button onClick={() => handleOpenDailyModal(null)} className="flex items-center space-x-2 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
@@ -352,7 +352,7 @@ const AdminPage = () => {
             
             <div className="bg-white p-6 rounded-lg shadow">
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
-                    <h3 className="text-xl font-semibold text-gray-800">通常患者マスタ (全クール)</h3>
+                    <h3 className="text-xl font-semibold text-gray-800">通常患者マスタ</h3>
                     <button onClick={() => handleOpenMasterModal()} className="flex items-center space-x-2 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
                         <span>(マスタ)</span>
@@ -477,13 +477,13 @@ const MonitorPage = () => {
                 <div className="bg-blue-100 p-6 rounded-lg shadow-lg">
                     <h3 className="text-2xl font-semibold mb-4 text-blue-800 text-center">お呼び出し</h3>
                     <div className="space-y-3 text-center">
-                        {callingPatients.length > 0 ? callingPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No. {p.bed} {p.name}様</p>)) : <p className="text-gray-500">現在、呼び出し中の患者さんはいません。</p>}
+                        {callingPatients.length > 0 ? callingPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No.{p.bed} {p.name} 様</p>)) : <p className="text-gray-500">現在、呼び出し中の患者さんはいません。</p>}
                     </div>
                 </div>
                 <div className="bg-green-100 p-6 rounded-lg shadow-lg">
                     <h3 className="text-2xl font-semibold mb-4 text-green-800 text-center">治療中</h3>
                      <div className="space-y-3 text-center">
-                        {treatmentPatients.length > 0 ? treatmentPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No. {p.bed} {p.name}様</p>)) : <p className="text-gray-500">現在、治療中の患者さんはいません。</p>}
+                        {treatmentPatients.length > 0 ? treatmentPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No.{p.bed} {p.name} 様</p>)) : <p className="text-gray-500">現在、治療中の患者さんはいません。</p>}
                     </div>
                 </div>
             </div>
@@ -516,7 +516,7 @@ const StaffPage = () => {
                                 <div key={p.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg shadow-sm min-w-max">
                                     <div className="flex items-center whitespace-nowrap">
                                         <span className="text-sm font-semibold bg-gray-200 text-gray-700 px-2 py-1 rounded mr-3">{p.cool}クール</span>
-                                        <span className="text-lg font-medium mr-4">No. {p.bed} {p.name}様</span>
+                                        <span className="text-lg font-medium mr-4">No.{p.bed} {p.name} 様</span>
                                         <StatusBadge status={p.status}/>
                                     </div>
                                     <div className="whitespace-nowrap pl-4 flex space-x-2">
@@ -553,7 +553,7 @@ const DriverPage = () => {
                 <h3 className="text-xl font-semibold mb-4">呼び出し中の患者様</h3>
                 {callingPatients.length > 0 ? (
                     <div className="space-y-3">
-                        {callingPatients.map(p => (<div key={p.id} className="p-4 bg-blue-100 rounded-lg text-blue-800 font-semibold text-lg">No. {p.bed} {p.name}様 - お迎えをお願いします</div>))}
+                        {callingPatients.map(p => (<div key={p.id} className="p-4 bg-blue-100 rounded-lg text-blue-800 font-semibold text-lg">No.{p.bed} {p.name} 様</div>))}
                     </div>
                 ) : (<p className="text-gray-500 text-center py-4">現在、呼び出し中の患者さんはいません。</p>)}
             </div>
