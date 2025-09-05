@@ -468,13 +468,13 @@ const MonitorPage = () => {
                 <div className="bg-blue-100 p-6 rounded-lg shadow-lg">
                     <h3 className="text-2xl font-semibold mb-4 text-blue-800 text-center">お呼び出し</h3>
                     <div className="space-y-3 text-center">
-                        {callingPatients.length > 0 ? callingPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No. {p.bed} {p.name}様</p>)) : <p className="text-gray-500">現在、呼び出し中の患者さんはいません。</p>}
+                        {callingPatients.length > 0 ? callingPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No. {p.bed} {p.name} 様</p>)) : <p className="text-gray-500">現在、呼び出し中の患者さんはいません。</p>}
                     </div>
                 </div>
                 <div className="bg-green-100 p-6 rounded-lg shadow-lg">
                     <h3 className="text-2xl font-semibold mb-4 text-green-800 text-center">治療中</h3>
                      <div className="space-y-3 text-center">
-                        {treatmentPatients.length > 0 ? treatmentPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No. {p.bed} {p.name}様</p>)) : <p className="text-gray-500">現在、治療中の患者さんはいません。</p>}
+                        {treatmentPatients.length > 0 ? treatmentPatients.map(p => (<p key={p.id} className="text-2xl md:text-3xl p-4 bg-white rounded-md shadow">No. {p.bed} {p.name} 様</p>)) : <p className="text-gray-500">現在、治療中の患者さんはいません。</p>}
                     </div>
                 </div>
             </div>
@@ -507,7 +507,7 @@ const StaffPage = () => {
                                 <div key={p.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg shadow-sm min-w-max">
                                     <div className="flex items-center whitespace-nowrap">
                                         <span className="text-sm font-semibold bg-gray-200 text-gray-700 px-2 py-1 rounded mr-3">{p.cool}クール</span>
-                                        <span className="text-lg font-medium mr-4">No. {p.bed} {p.name}様</span>
+                                        <span className="text-lg font-medium mr-4">No. {p.bed} {p.name} 様</span>
                                         <StatusBadge status={p.status}/>
                                     </div>
                                     <div className="whitespace-nowrap pl-4">
@@ -540,7 +540,7 @@ const DriverPage = () => {
                 <h3 className="text-xl font-semibold mb-4">呼び出し中の患者様</h3>
                 {callingPatients.length > 0 ? (
                     <div className="space-y-3">
-                        {callingPatients.map(p => (<div key={p.id} className="p-4 bg-blue-100 rounded-lg text-blue-800 font-semibold text-lg">No. {p.bed} {p.name}様 - お迎えをお願いします</div>))}
+                        {callingPatients.map(p => (<div key={p.id} className="p-4 bg-blue-100 rounded-lg text-blue-800 font-semibold text-lg">No. {p.bed} {p.name} 様</div>))}
                     </div>
                 ) : (<p className="text-gray-500 text-center py-4">現在、呼び出し中の患者さんはいません。</p>)}
             </div>
