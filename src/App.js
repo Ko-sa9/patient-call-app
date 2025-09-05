@@ -301,14 +301,14 @@ const AdminPage = () => {
 
             <div className="bg-white p-6 rounded-lg shadow">
                  <div className="flex justify-between items-center mb-4 border-b pb-2">
-                    <h3 className="text-xl font-semibold text-gray-800">本日の呼び出しリスト ({selectedCool}クール)</h3>
+                    <h3 className="text-xl font-semibold text-gray-800">リスト ({selectedCool}クール)</h3>
                     <div className="flex items-center space-x-2">
                         <button onClick={() => handleOpenDailyModal(null)} className="flex items-center space-x-2 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
                             <span>(臨時)</span>
                         </button>
                         <button onClick={() => setConfirmClearListModal({ isOpen: true })} disabled={dailyList.length === 0} className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 rounded-lg transition disabled:bg-red-300 disabled:cursor-not-allowed text-sm">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            <svg xmlns="http://www.w.3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                             <span>(リスト)</span>
                         </button>
                     </div>
@@ -334,7 +334,7 @@ const AdminPage = () => {
                                                 <button title="退出" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '退出済')} className="p-2 rounded bg-purple-500 hover:bg-purple-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg></button>
                                                 <button title="キャンセル" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="p-2 rounded bg-gray-500 hover:bg-gray-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6-6m-6 6l6 6" /></svg></button>
                                             </>}
-                                            {p.status === '退出済' && <button title="治療中に戻す" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="p-2 rounded bg-yellow-500 hover:bg-yellow-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg></button>}
+                                            {p.status === '退出済' && <button title="治療中に戻す" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="p-2 rounded bg-green-500 hover:bg-green-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg></button>}
                                             <button title="編集" onClick={() => handleOpenDailyModal(p)} className="p-2 rounded bg-yellow-500 hover:bg-yellow-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
                                             <button title="削除" onClick={() => handleDeleteDailyClick(p.id)} className="p-2 rounded bg-red-500 hover:bg-red-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                                         </div>
@@ -364,11 +364,11 @@ const AdminPage = () => {
                             <thead className="bg-gray-100">
                                 <tr>
                                     <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">操作</th>
+                                    <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">曜日</th>
                                     <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">クール</th>
                                     <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">ベッド番号</th>
                                     <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">氏名</th>
                                     <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">ふりがな</th>
-                                    <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">曜日</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -387,11 +387,11 @@ const AdminPage = () => {
                                                     <button title="削除" onClick={() => handleDeleteMasterClick(p.id)} className="p-2 rounded bg-red-500 hover:bg-red-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                                                 </div>
                                             </td>
+                                            <td className="p-2 text-sm whitespace-nowrap">{p.day}</td>
                                             <td className="p-2 text-sm whitespace-nowrap">{p.cool}</td>
                                             <td className="p-2 text-sm whitespace-nowrap">{p.bed}</td>
                                             <td className="p-2 text-sm whitespace-nowrap">{p.name}</td>
                                             <td className="p-2 text-sm whitespace-nowrap">{p.furigana}</td>
-                                            <td className="p-2 text-sm whitespace-nowrap">{p.day}</td>
                                         </tr>
                                     )) : 
                                     <tr>
@@ -513,7 +513,7 @@ const StaffPage = () => {
                     {actionPatients.length > 0 ? (
                         <div className="space-y-3">
                             {actionPatients.map(p => (
-                                <div key={p.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg shadow-sm min-w-max">
+                                <div key={p.id} className="flex items-center p-3 bg-gray-50 rounded-lg shadow-sm min-w-max">
                                     <div className="whitespace-nowrap pr-4 flex space-x-2">
                                         {p.status === '治療中' && 
                                             <button title="呼出" onClick={() => updatePatientStatus(selectedFacility, selectedDate, p.cool, p.id, '呼出中')} className="p-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition">
@@ -527,9 +527,9 @@ const StaffPage = () => {
                                         }
                                     </div>
                                     <div className="flex items-center whitespace-nowrap">
+                                        <StatusBadge status={p.status}/>
                                         <span className="text-sm font-semibold bg-gray-200 text-gray-700 px-2 py-1 rounded mr-3">{p.cool}クール</span>
                                         <span className="text-lg font-medium mr-4">No.{p.bed} {p.name} 様</span>
-                                        <StatusBadge status={p.status}/>
                                     </div>
                                 </div>
                             ))}
@@ -550,12 +550,12 @@ const DriverPage = () => {
         <div>
             <h2 className="text-2xl font-bold mb-4">送迎担当者用画面</h2>
             <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-xl font-semibold mb-4">呼出中の患者様</h3>
+                <h3 className="text-xl font-semibold mb-4">お呼び出し中の患者様</h3>
                 {callingPatients.length > 0 ? (
                     <div className="space-y-3">
                         {callingPatients.map(p => (<div key={p.id} className="p-4 bg-blue-100 rounded-lg text-blue-800 font-semibold text-lg">No.{p.bed} {p.name} 様</div>))}
                     </div>
-                ) : (<p className="text-gray-500 text-center py-4">現在、呼出中の患者さんはいません。</p>)}
+                ) : (<p className="text-gray-500 text-center py-4">現在、お呼び出し中の患者さんはいません。</p>)}
             </div>
         </div>
     );
