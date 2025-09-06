@@ -685,7 +685,7 @@ const PasswordModal = ({ onSuccess, onCancel }) => {
     );
 };
 
-const RoleSelectionPage = ({ onSelectRole }) => {
+const RoleSelectionPage = ({ onSelectRole }) => (
     <div className="flex items-center justify-center h-screen bg-gray-100">
         <div className="text-center p-8 bg-white rounded-xl shadow-lg max-w-md w-full">
             <h1 className="text-3xl font-bold text-gray-800 mb-4">患者呼び出しシステム</h1>
@@ -700,7 +700,7 @@ const RoleSelectionPage = ({ onSelectRole }) => {
             </div>
         </div>
     </div>
-};
+);
 
 
 // --- Main App ---
