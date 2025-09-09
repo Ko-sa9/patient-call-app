@@ -415,7 +415,7 @@ const AdminPage = () => {
 // --- 2. Monitor Page ---
 const MonitorPage = () => {
     const { allPatients, loading } = useAllDayPatients();
-    const callingPatients = allPatients.filter(p => p.status === '呼出中');
+    const callingPatients = allPatients.filter(p => p.status === '呼出中').sort((a, b) => a.bed.localeCompare(b.bed, undefined, {numeric: true}));
     const treatmentPatients = allPatients.filter(p => p.status === '治療中');
     const prevCallingPatientIdsRef = useRef(new Set());
     const [isSpeaking, setIsSpeaking] = useState(false);
@@ -549,7 +549,7 @@ const StaffPage = () => {
 // --- 4. Driver Page ---
 const DriverPage = () => {
     const { allPatients, loading } = useAllDayPatients();
-    const callingPatients = allPatients.filter(p => p.status === '呼出中');
+    const callingPatients = allPatients.filter(p => p.status === '呼出中').sort((a, b) => a.bed.localeCompare(b.bed, undefined, {numeric: true}));
     if (loading) return <LoadingSpinner text="送迎リストを読み込み中..." />;
     return (
         <div>
@@ -637,7 +637,7 @@ const StaffView = ({ user, onGoBack }) => {
             {renderPage()}
         </AppLayout>
     );
-};
+}
 
 const PublicView = ({ user, onGoBack }) => {
     return (
