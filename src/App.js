@@ -180,6 +180,7 @@ const AdminPage = () => {
     const [masterModalOpen, setMasterModalOpen] = useState(false);
     const [editingMasterPatient, setEditingMasterPatient] = useState(null);
     const [masterFormData, setMasterFormData] = useState({ name: '', furigana: '', bed: '', day: '月水金', cool: '1' });
+    const [masterSearchTerm, setMasterSearchTerm] = useState('');
     
     const [dailyModalOpen, setDailyModalOpen] = useState(false);
     const [editingDailyPatient, setEditingDailyPatient] = useState(null);
@@ -359,9 +360,18 @@ const AdminPage = () => {
             <div className="bg-white p-6 rounded-lg shadow">
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
                     <h3 className="text-xl font-semibold text-gray-800">通常患者マスタ (全クール)</h3>
-                    <button title="患者マスタ追加" onClick={() => handleOpenMasterModal()} className="flex items-center space-x-2 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                    </button>
+                    <div className="flex items-center space-x-2">
+                        <input 
+                            type="search" 
+                            placeholder="氏名, ふりがな, ベッド番号で検索" 
+                            value={masterSearchTerm}
+                            onChange={(e) => setMasterSearchTerm(e.target.value)}
+                            className="p-2 border rounded-md text-sm"
+                        />
+                        <button title="患者マスタ追加" onClick={() => handleOpenMasterModal()} className="flex items-center space-x-2 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                        </button>
+                    </div>
                 </div>
                 {loadingMaster ? <LoadingSpinner /> : (
                     <div className="overflow-x-auto">
@@ -378,11 +388,22 @@ const AdminPage = () => {
                             </thead>
                             <tbody>
                                 {masterPatients.length > 0 ? 
-                                    masterPatients.sort((a, b) => {
+                                    masterPatients
+                                    .filter(p => {
+                                        const term = masterSearchTerm.toLowerCase();
+                                        if (!term) return true;
+                                        return p.name.toLowerCase().includes(term) || 
+                                               (p.furigana && p.furigana.toLowerCase().includes(term)) ||
+                                               p.bed.toLowerCase().includes(term);
+                                    })
+                                    .sort((a, b) => {
+                                        const dayOrder = { '月水金': 1, '火木土': 2 };
+                                        const dayCompare = (dayOrder[a.day] || 99) - (dayOrder[b.day] || 99);
+                                        if (dayCompare !== 0) return dayCompare;
+
                                         const coolCompare = a.cool.localeCompare(b.cool, undefined, { numeric: true });
-                                        if (coolCompare !== 0) {
-                                            return coolCompare;
-                                        }
+                                        if (coolCompare !== 0) return coolCompare;
+                                        
                                         return a.bed.localeCompare(b.bed, undefined, { numeric: true });
                                     }).map(p => (
                                         <tr key={p.id} className="border-b hover:bg-gray-50">
@@ -416,7 +437,7 @@ const AdminPage = () => {
 const MonitorPage = () => {
     const { allPatients, loading } = useAllDayPatients();
     const callingPatients = allPatients.filter(p => p.status === '呼出中').sort((a, b) => a.bed.localeCompare(b.bed, undefined, {numeric: true}));
-    const treatmentPatients = allPatients.filter(p => p.status === '治療中');
+    const treatmentPatients = allPatients.filter(p => p.status === '治療中').sort((a, b) => a.bed.localeCompare(b.bed, undefined, {numeric: true}));
     const prevCallingPatientIdsRef = useRef(new Set());
     const [isSpeaking, setIsSpeaking] = useState(false);
     const speechQueueRef = useRef([]);
@@ -708,7 +729,7 @@ const PasswordModal = ({ onSuccess, onCancel }) => {
     );
 };
 
-const RoleSelectionPage = ({ onSelectRole }) => (
+const RoleSelectionPage = ({ onSelectRole }) => {
     <div className="flex items-center justify-center h-screen bg-gray-100">
         <div className="text-center p-8 bg-white rounded-xl shadow-lg max-w-md w-full">
             <h1 className="text-3xl font-bold text-gray-800 mb-4">患者呼び出しシステム</h1>
@@ -723,7 +744,7 @@ const RoleSelectionPage = ({ onSelectRole }) => (
             </div>
         </div>
     </div>
-);
+};
 
 
 // --- Main App ---
