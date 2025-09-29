@@ -648,6 +648,29 @@ const PublicView = ({ user, onGoBack }) => {
 };
 
 // --- Login / Role Selection ---
+const FacilitySelectionPage = ({ onSelectFacility, onGoBack }) => (
+    <div className="flex items-center justify-center h-screen bg-gray-100">
+        <div className="text-center p-8 bg-white rounded-xl shadow-lg max-w-md w-full">
+            <h1 className="text-3xl font-bold text-gray-800 mb-4">施設を選択してください</h1>
+            <p className="text-gray-600 mb-8">表示する施設を選択してください。</p>
+            <div className="space-y-4">
+                {FACILITIES.map(facility => (
+                    <button 
+                        key={facility} 
+                        onClick={() => onSelectFacility(facility)} 
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-lg transition duration-300 text-lg"
+                    >
+                        {facility}
+                    </button>
+                ))}
+            </div>
+            <button onClick={onGoBack} className="mt-8 text-sm text-gray-600 hover:text-blue-600 transition">
+                役割選択に戻る
+            </button>
+        </div>
+    </div>
+);
+
 const PasswordModal = ({ onSuccess, onCancel }) => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -707,7 +730,8 @@ const RoleSelectionPage = ({ onSelectRole }) => (
 export default function App() {
     const [user, setUser] = useState(null);
     const [authReady, setAuthReady] = useState(false);
-    const [viewMode, setViewMode] = useState('login'); // 'login', 'password', 'staff', 'public'
+    const [viewMode, setViewMode] = useState('login'); // 'login', 'password', 'facilitySelection', 'staff', 'public'
+    const [selectedRole, setSelectedRole] = useState(null); // 'staff' or 'public'
     
     const [selectedFacility, setSelectedFacility] = useState(FACILITIES[0]);
     const [selectedDate, setSelectedDate] = useState(getTodayString());
@@ -730,15 +754,26 @@ export default function App() {
     }, []);
 
     const handleRoleSelect = (role) => {
+        setSelectedRole(role);
         if (role === 'staff') {
             setViewMode('password');
         } else {
-            setViewMode('public');
+            setViewMode('facilitySelection');
         }
+    };
+
+    const handlePasswordSuccess = () => {
+        setViewMode('facilitySelection');
+    };
+
+    const handleFacilitySelect = (facility) => {
+        setSelectedFacility(facility);
+        setViewMode(selectedRole);
     };
     
     const handleGoBack = () => {
         setViewMode('login');
+        setSelectedRole(null);
     };
 
     if (!authReady || !user) {
@@ -748,7 +783,8 @@ export default function App() {
     return (
         <AppContext.Provider value={{ selectedFacility, setSelectedFacility, selectedDate, setSelectedDate, selectedCool, setSelectedCool }}>
             {viewMode === 'login' && <RoleSelectionPage onSelectRole={handleRoleSelect} />}
-            {viewMode === 'password' && <PasswordModal onSuccess={() => setViewMode('staff')} onCancel={() => setViewMode('login')} />}
+            {viewMode === 'password' && <PasswordModal onSuccess={handlePasswordSuccess} onCancel={() => setViewMode('login')} />}
+            {viewMode === 'facilitySelection' && <FacilitySelectionPage onSelectFacility={handleFacilitySelect} onGoBack={() => setViewMode('login')} />}
             {viewMode === 'staff' && <StaffView user={user} onGoBack={handleGoBack} />}
             {viewMode === 'public' && <PublicView user={user} onGoBack={handleGoBack} />}
         </AppContext.Provider>
