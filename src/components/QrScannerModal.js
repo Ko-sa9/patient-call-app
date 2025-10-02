@@ -20,7 +20,7 @@ const QrScannerModal = ({ onClose }) => {
     const { selectedFacility, selectedDate } = useContext(AppContext);
     const { allPatients } = useAllDayPatients();
     const [scanResult, setScanResult] = useState(null);
-    const [message, setMessage] = useState('');
+    const [message, setMessage] = useState('スキャンの準備ができました');
 
     useEffect(() => {
         const scanner = new Html5QrcodeScanner(
@@ -35,19 +35,24 @@ const QrScannerModal = ({ onClose }) => {
             false
         );
 
-        const onScanSuccess = (decodedText, decodedResult) => {
+        const onScanSuccess = async (decodedText, decodedResult) => {
             setScanResult(decodedText);
             const patient = allPatients.find(p => p.masterPatientId === decodedText);
 
             if (patient) {
                 if (patient.status === '治療中') {
-                    updatePatientStatus(selectedFacility, selectedDate, patient.cool, patient.id, '呼出中');
-                    setMessage(`${patient.name} さんを呼び出しました。`);
+                    try {
+                        await updatePatientStatus(selectedFacility, selectedDate, patient.cool, patient.id, '呼出中');
+                        setMessage(`${patient.name} さんを呼び出しました。`);
+                    } catch (error) {
+                        console.error("Error updating patient status:", error);
+                        setMessage(`エラーが発生しました: ${error.message}`);
+                    }
                 } else {
-                    setMessage(`${patient.name} さんは既に呼び出し済みか、退出済みです。`);
+                    setMessage(`${patient.name} さんは現在「${patient.status}」です。`);
                 }
             } else {
-                setMessage('該当する患者が見つかりませんでした。');
+                setMessage('このQRコードに該当する患者さんは本日のリストにいません。');
             }
         };
 
@@ -72,8 +77,8 @@ const QrScannerModal = ({ onClose }) => {
         >
             <div id="qr-reader"></div>
             {message && (
-                <div className="mt-4 p-3 bg-blue-100 text-blue-800 rounded-lg">
-                    <p className="font-semibold">最終スキャン結果:</p>
+                <div className={`mt-4 p-3 rounded-lg ${message.includes('エラー') || message.includes('いません') ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
+                    <p className="font-semibold">スキャン結果:</p>
                     <p>{message}</p>
                 </div>
             )}

@@ -1,13 +1,38 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import QrScannerModal from './components/QrScannerModal';
-import { AppContext, FACILITIES, getTodayString, getDayQueryString } from './context/AppContext';
-import { useDailyList, useAllDayPatients, updatePatientStatus } from './hooks/patientHooks';
+import { collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch, setDoc, getDoc, orderBy } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import CustomModal from './components/CustomModal';
-import ConfirmationModal from './components/ConfirmationModal';
+import QrScannerModal from './components/QrScannerModal';
+import { signOut } from 'firebase/auth';
+import { AppContext, FACILITIES, getTodayString, getDayQueryString } from './context/AppContext';
+import { useDailyList, useMasterPatients, useAllDayPatients, updatePatientStatus } from './hooks/patientHooks';
 import LoadingSpinner from './components/LoadingSpinner';
+
+const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText, confirmColor }) => {
+    const colorClasses = {
+        red: 'bg-red-600 hover:bg-red-700',
+        blue: 'bg-blue-600 hover:bg-blue-700',
+        green: 'bg-green-600 hover:bg-green-700',
+    };
+
+    return (
+        <CustomModal
+            title={title}
+            onClose={onCancel}
+            footer={
+                <>
+                    <button onClick={onCancel} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button>
+                    <button onClick={onConfirm} className={`${colorClasses[confirmColor] || 'bg-gray-600 hover:bg-gray-700'} text-white font-bold py-2 px-6 rounded-lg`}>
+                        {confirmText}
+                    </button>
+                </>
+            }
+        >
+            <p>{message}</p>
+        </CustomModal>
+    );
+};
 
 const StatusBadge = ({ status }) => {
     const statusStyles = {
@@ -25,9 +50,8 @@ const StatusBadge = ({ status }) => {
 const AdminPage = () => {
     const { selectedFacility, selectedDate, selectedCool } = useContext(AppContext);
     const { dailyList, loading: loadingDaily } = useDailyList();
+    const { masterPatients, loading: loadingMaster, setLoading: setLoadingMaster } = useMasterPatients();
 
-    const [masterPatients, setMasterPatients] = useState([]);
-    const [loadingMaster, setLoadingMaster] = useState(true);
     const [masterModalOpen, setMasterModalOpen] = useState(false);
     const [editingMasterPatient, setEditingMasterPatient] = useState(null);
     const [masterFormData, setMasterFormData] = useState({ name: '', furigana: '', bed: '', day: '月水金', cool: '1', patientId: '' });
@@ -43,18 +67,8 @@ const AdminPage = () => {
     const [confirmClearListModal, setConfirmClearListModal] = useState({ isOpen: false });
 
 
-    const masterPatientsCollectionRef = collection(db, 'patients');
+    const masterPatientsCollectionRef = collection(db, 'masterPatients');
     const dailyPatientsCollectionRef = (cool) => collection(db, 'daily_lists', `${selectedDate}_${selectedFacility}_${cool}`, 'patients');
-
-    useEffect(() => {
-        setLoadingMaster(true);
-        const q = query(masterPatientsCollectionRef, where("facility", "==", selectedFacility));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            setMasterPatients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            setLoadingMaster(false);
-        });
-        return () => unsubscribe();
-    }, [selectedFacility]);
 
     const handleOpenMasterModal = (patient = null) => {
         if (patient) {
@@ -68,7 +82,7 @@ const AdminPage = () => {
     };
     const handleCloseMasterModal = () => { setMasterModalOpen(false); setEditingMasterPatient(null); };
     const handleMasterFormChange = (e) => setMasterFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    const handleMasterSubmit = async (e) => { e.preventDefault(); if (!masterFormData.name || !masterFormData.bed) return; try { if (editingMasterPatient) { await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...masterFormData, updatedAt: serverTimestamp() }); } else { await addDoc(masterPatientsCollectionRef, { ...masterFormData, facility: selectedFacility, createdAt: serverTimestamp() }); } handleCloseMasterModal(); } catch (error) { console.error("Error saving master patient:", error); } };
+    const handleMasterSubmit = async (e) => { e.preventDefault(); if (!masterFormData.name || !masterFormData.bed) return; const finalPatientId = masterFormData.patientId || crypto.randomUUID(); try { if (editingMasterPatient) { await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...masterFormData, patientId: finalPatientId, updatedAt: serverTimestamp() }); } else { await addDoc(masterPatientsCollectionRef, { ...masterFormData, patientId: finalPatientId, facility: selectedFacility, createdAt: serverTimestamp() }); } handleCloseMasterModal(); } catch (error) { console.error("Error saving master patient:", error); } };
     const handleDeleteMasterClick = (patientId) => setConfirmMasterDelete({ isOpen: true, patientId });
     const handleConfirmMasterDelete = async () => { if (confirmMasterDelete.patientId) { try { await deleteDoc(doc(masterPatientsCollectionRef, confirmMasterDelete.patientId)); } catch (error) { console.error("Error deleting master patient:", error); } setConfirmMasterDelete({ isOpen: false, patientId: null }); } };
 
@@ -96,22 +110,46 @@ const AdminPage = () => {
     const handleConfirmDailyDelete = async () => { if (confirmDailyDelete.patientId) { try { await deleteDoc(doc(dailyPatientsCollectionRef(selectedCool), confirmDailyDelete.patientId)); } catch (error) { console.error("Error deleting daily patient:", error); } setConfirmDailyDelete({ isOpen: false, patientId: null }); } };
 
     const handleLoadPatients = async () => {
-        const dayQuery = getDayQueryString(selectedDate);
+        const dayString = selectedDate.toISOString().split('T')[0];
+        const dayQuery = getDayQueryString(new Date(selectedDate));
         if (!dayQuery) { alert("日曜日は対象外です。"); return; }
         const loadAction = async () => {
             setLoadingMaster(true);
             try {
-                const q = query(masterPatientsCollectionRef, where("facility", "==", selectedFacility), where("day", "==", dayQuery), where("cool", "==", selectedCool));
-                const masterSnapshot = await getDocs(q);
-                if (masterSnapshot.empty) { alert("対象となる患者さんがマスタに登録されていません。"); setLoadingMaster(false); return; }
+                const targetMasterPatients = masterPatients.filter(p => p.day === dayQuery);
+
+                if (targetMasterPatients.length === 0) {
+                     alert("対象となる患者さんがマスタに登録されていません。");
+                     setLoadingMaster(false);
+                     return;
+                }
+
                 const batch = writeBatch(db);
-                const dailyListId = `${selectedDate}_${selectedFacility}_${selectedCool}`;
+                const dailyListId = `${selectedFacility}_${dayString}`;
                 const listDocRef = doc(db, 'daily_lists', dailyListId);
-                batch.set(listDocRef, { createdAt: serverTimestamp(), facility: selectedFacility, date: selectedDate, cool: selectedCool });
-                masterSnapshot.forEach(patientDoc => {
-                    const patientData = patientDoc.data();
-                    const newDailyPatientDocRef = doc(dailyPatientsCollectionRef(selectedCool), patientDoc.id);
-                    batch.set(newDailyPatientDocRef, { name: patientData.name, furigana: patientData.furigana || '', bed: patientData.bed, status: '治療中', masterPatientId: patientDoc.id, createdAt: serverTimestamp() });
+                
+                // Check if the list document already exists to avoid overwriting metadata unnecessarily
+                const existingListSnap = await getDocs(collection(listDocRef, 'patients'));
+                if (existingListSnap.empty) {
+                    batch.set(listDocRef, { createdAt: serverTimestamp(), facility: selectedFacility, date: dayString });
+                } else {
+                    // If overwriting, first delete all existing patients in the list
+                    existingListSnap.docs.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                }
+
+                targetMasterPatients.forEach(patientData => {
+                    const newDailyPatientDocRef = doc(collection(listDocRef, 'patients'), patientData.patientId); // Use patientId for doc ID
+                    batch.set(newDailyPatientDocRef, { 
+                        name: patientData.name, 
+                        furigana: patientData.furigana || '', 
+                        bed: patientData.bed,
+                        cool: patientData.cool,
+                        status: '治療中', 
+                        masterPatientId: patientData.id, // Keep reference to master doc id
+                        createdAt: serverTimestamp() 
+                    });
                 });
                 await batch.commit();
             } catch (error) { console.error("Error loading daily patients:", error); alert("読み込みに失敗しました。"); }
@@ -147,7 +185,7 @@ const AdminPage = () => {
                 <div>
                     <label className="block font-medium mb-1">患者ID (QRコード用)</label>
                     <div className="flex items-center">
-                        <input type="text" name="patientId" value={masterFormData.patientId} readOnly className="w-full p-2 border rounded-md bg-gray-100" />
+                        <input type="text" name="patientId" value={masterFormData.patientId} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md bg-white" placeholder="手入力または自動生成" />
                         <button type="button" onClick={() => navigator.clipboard.writeText(masterFormData.patientId)} className="ml-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg">コピー</button>
                     </div>
                 </div>
@@ -198,12 +236,12 @@ const AdminPage = () => {
                                 <tr key={p.id} className="border-b hover:bg-gray-50">
                                     <td className="p-2">
                                         <div className="flex space-x-2">
-                                            {p.status === '治療中' && <button title="呼出" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '呼出中')} className="p-2 rounded bg-blue-500 hover:bg-blue-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg></button>}
+                                            {p.status === '治療中' && <button title="呼出" onClick={() => updatePatientStatus(selectedFacility, new Date(selectedDate), p.cool, p.id, '呼出中')} className="p-2 rounded bg-blue-500 hover:bg-blue-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg></button>}
                                             {p.status === '呼出中' && <>
-                                                <button title="退出" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '退出済')} className="p-2 rounded bg-purple-500 hover:bg-purple-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg></button>
-                                                <button title="キャンセル" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="p-2 rounded bg-gray-500 hover:bg-gray-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6-6m-6 6l6 6" /></svg></button>
+                                                <button title="退出" onClick={() => updatePatientStatus(selectedFacility, new Date(selectedDate), p.cool, p.id, '退出済')} className="p-2 rounded bg-purple-500 hover:bg-purple-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg></button>
+                                                <button title="キャンセル" onClick={() => updatePatientStatus(selectedFacility, new Date(selectedDate), p.cool, p.id, '治療中')} className="p-2 rounded bg-gray-500 hover:bg-gray-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6-6m-6 6l6 6" /></svg></button>
                                             </>}
-                                            {p.status === '退出済' && <button title="治療中に戻す" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="p-2 rounded bg-green-500 hover:bg-green-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg></button>}
+                                            {p.status === '退出済' && <button title="治療中に戻す" onClick={() => updatePatientStatus(selectedFacility, new Date(selectedDate), p.cool, p.id, '治療中')} className="p-2 rounded bg-green-500 hover:bg-green-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg></button>}
                                             <button title="編集" onClick={() => handleOpenDailyModal(p)} className="p-2 rounded bg-yellow-500 hover:bg-yellow-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
                                             <button title="削除" onClick={() => handleDeleteDailyClick(p.id)} className="p-2 rounded bg-red-500 hover:bg-red-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                                         </div>
@@ -313,7 +351,7 @@ const MonitorPage = () => {
         setIsSpeaking(true);
         const patient = speechQueueRef.current.shift();
         const nameToSpeak = patient.furigana || patient.name;
-        const textToSpeak = `${nameToSpeak}さんのお迎えのかた、${patient.bed}番ベッドへお願いします。`;
+        const textToSpeak = `${nameToSpeak}さん、${patient.bed}番ベッドへどうぞ。`;
         
         const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app";
 
@@ -404,9 +442,8 @@ const StaffPage = () => {
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-2xl font-bold">スタッフ用端末</h2>
                 <button onClick={() => setIsScannerOpen(true)} className="bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 12a8 8 0 018-8v0a8 8 0 018 8v0a8 8 0 01-8 8v0a8 8 0 01-8-8v0z" />
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M3 4a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm2 0V3a1 1 0 00-1-1H4a1 1 0 00-1 1v1h2zm0 2H3v1a1 1 0 001 1h1a1 1 0 001-1V6H5zM3 14a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1v-2zm2 0v-1a1 1 0 00-1-1H4a1 1 0 00-1 1v1h2zm0 2H3v1a1 1 0 001 1h1a1 1 0 001-1v-1H5zM13 4a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 01-1 1h-2a1 1 0 01-1-1V4zm2 0v-1a1 1 0 00-1-1h-1a1 1 0 00-1 1v1h2zm0 2h-1v1a1 1 0 001 1h1a1 1 0 001-1V6h-1zM13 14a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 01-1 1h-2a1 1 0 01-1-1v-2zm2 0v-1a1 1 0 00-1-1h-1a1 1 0 00-1 1v1h2zm0 2h-1v1a1 1 0 001 1h1a1 1 0 001-1v-1h-1zM7 4h6v2H7V4zM7 14h6v2H7v-2z" clipRule="evenodd" />
                     </svg>
                     <span>QRで呼出</span>
                 </button>
@@ -421,12 +458,12 @@ const StaffPage = () => {
                                 <div key={p.id} className="flex items-center p-3 bg-gray-50 rounded-lg shadow-sm min-w-max">
                                     <div className="whitespace-nowrap pr-4 flex space-x-2">
                                         {p.status === '治療中' && 
-                                            <button title="呼出" onClick={() => updatePatientStatus(selectedFacility, selectedDate, p.cool, p.id, '呼出中')} className="p-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition">
+                                            <button title="呼出" onClick={() => updatePatientStatus(selectedFacility, new Date(selectedDate), p.cool, p.id, '呼出中')} className="p-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition">
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                                             </button>
                                         }
                                         {p.status === '呼出中' &&
-                                            <button title="キャンセル" onClick={() => updatePatientStatus(selectedFacility, selectedDate, p.cool, p.id, '治療中')} className="p-3 rounded-lg bg-gray-500 hover:bg-gray-600 text-white transition">
+                                            <button title="キャンセル" onClick={() => updatePatientStatus(selectedFacility, new Date(selectedDate), p.cool, p.id, '治療中')} className="p-3 rounded-lg bg-gray-500 hover:bg-gray-600 text-white transition">
                                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6-6m-6 6l6 6" /></svg>
                                             </button>
                                         }
@@ -509,7 +546,7 @@ const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) =
                        {navButtons}
                     </div>
                 </div>
-                <GlobalControls hideCoolSelector={hideCoolSelector} />
+                {!hideCoolSelector && <GlobalControls />}
             </div>
         </nav>
         <main className="max-w-7xl mx-auto px-4 pb-8">{children}</main>
@@ -520,29 +557,42 @@ const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) =
 // --- Role-based Views ---
 const StaffView = ({ user, onGoBack }) => {
     const [currentPage, setCurrentPage] = useState('admin');
-    const hideCoolSelector = currentPage === 'monitor' || currentPage === 'staff';
-    const NavButton = ({ page, label }) => (<button onClick={() => setCurrentPage(page)} className={`px-3 py-2 sm:px-4 rounded-lg font-medium transition duration-200 text-sm sm:text-base ${ currentPage === page ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-200'}`}>{label}</button>);
-    
+    const hideCoolSelector = currentPage === 'monitor' || currentPage === 'staff' || currentPage === 'driver';
+    const NavButton = ({ page, label }) => (<button onClick={() => setCurrentPage(page)} className={`px-3 py-2 sm:px-4 rounded-lg font-medium transition duration-200 text-sm sm:text-base ${ currentPage === page ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100' }`}>{label}</button>);
+
     const renderPage = () => {
         switch (currentPage) {
             case 'admin': return <AdminPage />;
             case 'staff': return <StaffPage />;
             case 'monitor': return <MonitorPage />;
+            case 'driver': return <DriverPage />;
             default: return <AdminPage />;
         }
     };
     
     return (
-        <AppLayout user={user} onGoBack={onGoBack} hideCoolSelector={hideCoolSelector} navButtons={<><NavButton page="admin" label="管理" /><NavButton page="staff" label="スタッフ" /><NavButton page="monitor" label="モニター" /></>}>
+        <AppLayout user={user} onGoBack={onGoBack} hideCoolSelector={hideCoolSelector} navButtons={<><NavButton page="admin" label="管理" /><NavButton page="staff" label="スタッフ" /><NavButton page="monitor" label="モニター" /><NavButton page="driver" label="送迎" /></>}>
             {renderPage()}
         </AppLayout>
     );
 }
 
 const PublicView = ({ user, onGoBack }) => {
+    const [currentPage, setCurrentPage] = useState('monitor'); // Default to monitor view
+    const hideCoolSelector = true; // Always hide for public view
+    const NavButton = ({ page, label }) => (<button onClick={() => setCurrentPage(page)} className={`px-3 py-2 sm:px-4 rounded-lg font-medium transition duration-200 text-sm sm:text-base ${ currentPage === page ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100' }`}>{label}</button>);
+
+    const renderPage = () => {
+        switch (currentPage) {
+            case 'monitor': return <MonitorPage />;
+            case 'driver': return <DriverPage />;
+            default: return <MonitorPage />;
+        }
+    };
+
     return (
-        <AppLayout user={user} onGoBack={onGoBack} hideCoolSelector={true} navButtons={<span className="font-semibold text-gray-700">送迎担当者用</span>}>
-            <DriverPage />
+        <AppLayout user={user} onGoBack={onGoBack} hideCoolSelector={hideCoolSelector} navButtons={<><NavButton page="monitor" label="モニター" /><NavButton page="driver" label="送迎" /></>}>
+            {renderPage()}
         </AppLayout>
     );
 };
@@ -616,10 +666,10 @@ const RoleSelectionPage = ({ onSelectRole }) => {
             <p className="text-gray-600 mb-8">利用する役割を選択してください</p>
             <div className="space-y-4">
                 <button onClick={() => onSelectRole('staff')} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-lg transition duration-300 text-lg">
-                    スタッフ用
+                    管理・スタッフ用
                 </button>
                 <button onClick={() => onSelectRole('public')} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-6 rounded-lg transition duration-300 text-lg">
-                    公開用 (送迎)
+                    公開用 (モニター/送迎)
                 </button>
             </div>
         </div>
