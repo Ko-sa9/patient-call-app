@@ -264,7 +264,7 @@ const AdminPage = () => {
                         furigana: patientData.furigana || '', 
                         bed: patientData.bed, 
                         status: '治療中', 
-                        masterPatientId: patientData.patientId, // ★★★ ここが修正点です ★★★
+                        masterPatientId: patientData.patientId || null, // ★★★ ここが修正点です ★★★
                         createdAt: serverTimestamp() 
                     });
                 });
