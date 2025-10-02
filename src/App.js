@@ -3,7 +3,6 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
-import { Html5QrcodeScanner } from 'html5-qrcode';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -180,7 +179,8 @@ const AdminPage = () => {
     const [loadingMaster, setLoadingMaster] = useState(true);
     const [masterModalOpen, setMasterModalOpen] = useState(false);
     const [editingMasterPatient, setEditingMasterPatient] = useState(null);
-    const [masterFormData, setMasterFormData] = useState({ patientId: '', name: '', furigana: '', bed: '', day: '月水金', cool: '1' });
+    const [masterFormData, setMasterFormData] = useState({ name: '', furigana: '', bed: '', day: '月水金', cool: '1' });
+    const [masterSearchTerm, setMasterSearchTerm] = useState('');
     
     const [dailyModalOpen, setDailyModalOpen] = useState(false);
     const [editingDailyPatient, setEditingDailyPatient] = useState(null);
@@ -207,15 +207,12 @@ const AdminPage = () => {
 
     const handleOpenMasterModal = (patient = null) => {
         setEditingMasterPatient(patient);
-        setMasterFormData(patient ? 
-            { patientId: patient.patientId || '', name: patient.name, furigana: patient.furigana || '', bed: patient.bed, day: patient.day, cool: patient.cool } : 
-            { patientId: '', name: '', furigana: '', bed: '', day: '月水金', cool: '1' }
-        );
+        setMasterFormData(patient ? { name: patient.name, furigana: patient.furigana || '', bed: patient.bed, day: patient.day, cool: patient.cool } : { name: '', furigana: '', bed: '', day: '月水金', cool: '1' });
         setMasterModalOpen(true);
     };
     const handleCloseMasterModal = () => { setMasterModalOpen(false); setEditingMasterPatient(null); };
     const handleMasterFormChange = (e) => setMasterFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    const handleMasterSubmit = async (e) => { e.preventDefault(); if (!masterFormData.name || !masterFormData.bed || !masterFormData.patientId) return; try { if (editingMasterPatient) { await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...masterFormData, updatedAt: serverTimestamp() }); } else { await addDoc(masterPatientsCollectionRef, { ...masterFormData, facility: selectedFacility, createdAt: serverTimestamp() }); } handleCloseMasterModal(); } catch (error) { console.error("Error saving master patient:", error); } };
+    const handleMasterSubmit = async (e) => { e.preventDefault(); if (!masterFormData.name || !masterFormData.bed) return; try { if (editingMasterPatient) { await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...masterFormData, updatedAt: serverTimestamp() }); } else { await addDoc(masterPatientsCollectionRef, { ...masterFormData, facility: selectedFacility, createdAt: serverTimestamp() }); } handleCloseMasterModal(); } catch (error) { console.error("Error saving master patient:", error); } };
     const handleDeleteMasterClick = (patientId) => setConfirmMasterDelete({ isOpen: true, patientId });
     const handleConfirmMasterDelete = async () => { if (confirmMasterDelete.patientId) { try { await deleteDoc(doc(masterPatientsCollectionRef, confirmMasterDelete.patientId)); } catch (error) { console.error("Error deleting master patient:", error); } setConfirmMasterDelete({ isOpen: false, patientId: null }); } };
 
@@ -257,15 +254,8 @@ const AdminPage = () => {
                 batch.set(listDocRef, { createdAt: serverTimestamp(), facility: selectedFacility, date: selectedDate, cool: selectedCool });
                 masterSnapshot.forEach(patientDoc => {
                     const patientData = patientDoc.data();
-                    const newDailyPatientDocRef = doc(dailyPatientsCollectionRef(selectedCool)); 
-                    batch.set(newDailyPatientDocRef, { 
-                        name: patientData.name, 
-                        furigana: patientData.furigana || '', 
-                        bed: patientData.bed, 
-                        status: '治療中', 
-                        masterPatientId: patientData.patientId,
-                        createdAt: serverTimestamp() 
-                    });
+                    const newDailyPatientDocRef = doc(dailyPatientsCollectionRef(selectedCool), patientDoc.id);
+                    batch.set(newDailyPatientDocRef, { name: patientData.name, furigana: patientData.furigana || '', bed: patientData.bed, status: '治療中', masterPatientId: patientDoc.id, createdAt: serverTimestamp() });
                 });
                 await batch.commit();
             } catch (error) { console.error("Error loading daily patients:", error); alert("読み込みに失敗しました。"); }
@@ -294,23 +284,10 @@ const AdminPage = () => {
             setConfirmClearListModal({ isOpen: false });
         }
     };
-    
-    const copyToClipboard = (text) => {
-        if (!text) return;
-        const C=document.createElement("textarea"); C.value=text; document.body.appendChild(C); C.select(); document.execCommand("copy"); document.body.removeChild(C);
-        alert("患者IDがコピーされました。");
-    };
 
     return (
         <div className="space-y-8">
             {masterModalOpen && <CustomModal title={editingMasterPatient ? "患者情報の編集" : "新規患者登録"} onClose={handleCloseMasterModal} footer={<><button onClick={handleCloseMasterModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleMasterSubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleMasterSubmit} className="space-y-4">
-                <div>
-                    <label className="block font-medium mb-1">患者ID (QRコード用)</label>
-                    <div className="flex">
-                        <input type="text" name="patientId" value={masterFormData.patientId} onChange={handleMasterFormChange} className="w-full p-2 border rounded-l-md" placeholder="電子カルテIDなどを入力" required />
-                        <button type="button" onClick={() => copyToClipboard(masterFormData.patientId)} className="bg-gray-500 hover:bg-gray-600 text-white p-2 rounded-r-md">コピー</button>
-                    </div>
-                </div>
                 <div><label className="block font-medium mb-1">曜日</label><select name="day" value={masterFormData.day} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="月水金">月水金</option><option value="火木土">火木土</option></select></div>
                 <div><label className="block font-medium mb-1">クール</label><select name="cool" value={masterFormData.cool} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
                 <div><label className="block font-medium mb-1">ベッド番号</label><input type="text" name="bed" value={masterFormData.bed} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" required /></div>
@@ -866,4 +843,3 @@ export default function App() {
         </AppContext.Provider>
     );
 }
-
