@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useContext } from 'react';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 import { AppContext } from '../context/AppContext'; // AppContextをインポート
-import { useAllDayPatients, updatePatientStatus } from '../App'; // フックと関数をインポート
+import { useAllDayPatients, updatePatientStatus } from '../hooks/patientHooks'; // フックと関数をインポート
 
 const CustomModal = ({ title, children, onClose, footer }) => (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 p-4">

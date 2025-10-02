@@ -1,117 +1,17 @@
-import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
-import { initializeApp } from 'firebase/app';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 import QrScannerModal from './components/QrScannerModal';
 import { AppContext, FACILITIES } from './context/AppContext';
+import { useDailyList, useAllDayPatients, updatePatientStatus } from './hooks/patientHooks';
+import { db, auth } from './firebase'; // Firebaseの初期化を分離
 
 // --- Custom Hooks ---
-const useDailyList = () => {
-    const { selectedFacility, selectedDate, selectedCool } = useContext(AppContext);
-    const [dailyList, setDailyList] = useState([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        if (!selectedFacility || !selectedDate || !selectedCool) {
-            setLoading(false);
-            return;
-        }
-        setLoading(true);
-        const dailyListId = `${selectedDate}_${selectedFacility}_${selectedCool}`;
-        const dailyPatientsCollectionRef = collection(db, 'daily_lists', dailyListId, 'patients');
-        
-        const q = query(dailyPatientsCollectionRef);
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const fetchedDailyPatients = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), cool: selectedCool }));
-            setDailyList(fetchedDailyPatients);
-            setLoading(false);
-        }, (err) => {
-            console.error("Daily list fetch error:", err);
-            setLoading(false);
-        });
-        
-        return () => unsubscribe();
-    }, [selectedFacility, selectedDate, selectedCool]);
-
-    return { dailyList, loading };
-};
-
-const useAllDayPatients = () => {
-    const { selectedFacility, selectedDate } = useContext(AppContext);
-    const [allPatients, setAllPatients] = useState([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        if (!selectedFacility || !selectedDate) {
-            setLoading(false);
-            return;
-        }
-        setLoading(true);
-
-        const cools = ['1', '2', '3'];
-        const unsubscribes = [];
-        let patientData = { '1': [], '2': [], '3': [] };
-        let loadedFlags = { '1': false, '2': false, '3': false };
-
-        const updateCombinedList = () => {
-            const combined = Object.values(patientData).flat();
-            setAllPatients(combined);
-        };
-        
-        const checkLoadingDone = () => {
-            if (Object.values(loadedFlags).every(flag => flag)) {
-                setLoading(false);
-            }
-        };
-
-        cools.forEach(cool => {
-            const dailyListId = `${selectedDate}_${selectedFacility}_${cool}`;
-            const dailyPatientsCollectionRef = collection(db, 'daily_lists', dailyListId, 'patients');
-            const q = query(dailyPatientsCollectionRef);
-
-            const unsubscribe = onSnapshot(q, (snapshot) => {
-                patientData[cool] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), cool: cool }));
-                updateCombinedList();
-                if (!loadedFlags[cool]) {
-                    loadedFlags[cool] = true;
-                    checkLoadingDone();
-                }
-            }, (err) => {
-                console.error(`Error fetching list for cool ${cool}:`, err);
-                patientData[cool] = [];
-                updateCombinedList();
-                 if (!loadedFlags[cool]) {
-                    loadedFlags[cool] = true;
-                    checkLoadingDone();
-                }
-            });
-            unsubscribes.push(unsubscribe);
-        });
-
-        return () => {
-            unsubscribes.forEach(unsub => unsub());
-        };
-    }, [selectedFacility, selectedDate]);
-
-    return { allPatients, loading };
-};
+// useDailyListとuseAllDayPatientsは patientHooks.js に移動しました
 
 // --- Status Update Function ---
-const updatePatientStatus = async (facility, date, cool, patientId, newStatus) => {
-    const dailyListId = `${date}_${facility}_${cool}`;
-    const patientDocRef = doc(db, 'daily_lists', dailyListId, 'patients', patientId);
-    try {
-        await updateDoc(patientDocRef, {
-            status: newStatus,
-            updatedAt: serverTimestamp()
-        });
-    } catch (error) {
-        console.error("Error updating status: ", error);
-        alert("ステータスの更新に失敗しました。");
-    }
-};
+// updatePatientStatusは patientHooks.js に移動しました
 
 const StatusBadge = ({ status }) => {
     const statusStyles = {
