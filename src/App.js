@@ -264,7 +264,7 @@ const AdminPage = () => {
                         furigana: patientData.furigana || '', 
                         bed: patientData.bed, 
                         status: '治療中', 
-                        masterPatientId: patientData.patientId,
+                        masterPatientId: patientData.patientId, // ★★★ ここが修正点です ★★★
                         createdAt: serverTimestamp() 
                     });
                 });
@@ -900,4 +900,3 @@ export default function App() {
         </AppContext.Provider>
     );
 }
-
