@@ -1,4 +1,4 @@
-import React, { useState, useEffect, createContext, useContext, useRef } from 'react';
+import React, { useState, useEffect, createContext, useContext, useRef, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
@@ -264,7 +264,7 @@ const AdminPage = () => {
                         furigana: patientData.furigana || '', 
                         bed: patientData.bed, 
                         status: '治療中', 
-                        masterPatientId: patientData.patientId || null, // ★★★ ここが修正点です ★★★
+                        masterPatientId: patientData.patientId,
                         createdAt: serverTimestamp() 
                     });
                 });
