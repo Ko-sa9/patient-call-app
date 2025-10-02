@@ -176,6 +176,8 @@ const AdminPage = () => {
     const { selectedFacility, selectedDate, selectedCool } = useContext(AppContext);
     const { dailyList, loading: loadingDaily } = useDailyList();
 
+    const [masterSearchTerm, setMasterSearchTerm] = useState('');
+    
     const [masterPatients, setMasterPatients] = useState([]);
     const [loadingMaster, setLoadingMaster] = useState(true);
     const [masterModalOpen, setMasterModalOpen] = useState(false);
