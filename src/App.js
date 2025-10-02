@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Scanner } from '@yudiel/react-qr-scanner';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -594,8 +594,6 @@ const StaffPage = () => {
 };
 
 const QrScannerModal = ({ onClose, onScanSuccess, scanResult }) => {
-    const scannerRef = useRef(null);
-
     useEffect(() => {
         const scanner = new Html5QrcodeScanner(
             'qr-reader-container', 
@@ -614,14 +612,11 @@ const QrScannerModal = ({ onClose, onScanSuccess, scanResult }) => {
         };
         
         scanner.render(success, error);
-        scannerRef.current = scanner;
 
         return () => {
-            if (scannerRef.current) {
-                scannerRef.current.clear().catch(error => {
-                    console.error("Failed to clear html5-qrcode-scanner.", error);
-                });
-            }
+            scanner.clear().catch(error => {
+                console.error("Failed to clear html5-qrcode-scanner.", error);
+            });
         };
     }, [onScanSuccess]);
 
