@@ -4,53 +4,7 @@ import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 import QrScannerModal from './components/QrScannerModal';
-
-// -- Firebase Configuration ---
-const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY, // Netlifyの環境変数から安全に読み込み
-  authDomain: "patient-call-app-f5e7f.firebaseapp.com",
-  projectId: "patient-call-app-f5e7f",
-  storageBucket: "patient-call-app-f5e7f.appspot.com",
-  messagingSenderId: "545799005149",
-  appId: "1:545799005149:web:f1b22a42040eb455e98c34"
-};
-
-// --- Initialize Firebase ---
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const functions = getFunctions(app, 'us-central1'); // Cloud Functionのリージョンを明示的に指定
-
-// --- Helper Components & Functions ---
-const getTodayString = () => {
-    const today = new Date();
-    today.setHours(today.getHours() + 9); // JST
-    return today.toISOString().split('T')[0];
-}
-
-const getDayQueryString = (dateString) => {
-    const date = new Date(dateString);
-    const dayIndex = date.getDay();
-    if ([1, 3, 5].includes(dayIndex)) return '月水金';
-    if ([2, 4, 6].includes(dayIndex)) return '火木土';
-    return null;
-};
-
-const LoadingSpinner = ({ text = "読み込み中..." }) => (
-    <div className="flex flex-col justify-center items-center h-full my-8"><div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-blue-500"></div><p className="mt-4 text-gray-600">{text}</p></div>
-);
-
-const CustomModal = ({ title, children, onClose, footer }) => (
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 p-4"><div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg"><div className="flex justify-between items-center border-b pb-3 mb-4"><h3 className="text-xl font-bold">{title}</h3>{onClose && <button onClick={onClose} className="text-gray-500 hover:text-gray-800 text-2xl">&times;</button>}</div><div className="mb-6">{children}</div>{footer && <div className="border-t pt-4 flex justify-end space-x-3">{footer}</div>}</div></div>
-);
-
-const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = "実行", confirmColor = "blue" }) => (
-     <CustomModal title={title} onClose={onCancel} footer={<><button onClick={onCancel} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={onConfirm} className={`font-bold py-2 px-6 rounded-lg transition text-white ${confirmColor === 'red' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}>{confirmText}</button></>}><p>{message}</p></CustomModal>
-);
-
-// --- App Context for Shared State ---
-const AppContext = createContext();
-const FACILITIES = ["本院透析室", "坂田透析棟", "じんクリニック", "木更津クリニック"];
+import { AppContext, FACILITIES } from './context/AppContext';
 
 // --- Custom Hooks ---
 const useDailyList = () => {
