@@ -68,7 +68,7 @@ const AdminPage = () => {
     };
     const handleCloseMasterModal = () => { setMasterModalOpen(false); setEditingMasterPatient(null); };
     const handleMasterFormChange = (e) => setMasterFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    const handleMasterSubmit = async (e) => { e.preventDefault(); if (!masterFormData.name || !masterFormData.bed) return; try { if (editingMasterPatient) { await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...masterFormData, updatedAt: serverTimestamp() }); } else { await addDoc(masterPatientsCollectioneRef, { ...masterFormData, facility: selectedFacility, createdAt: serverTimestamp() }); } handleCloseMasterModal(); } catch (error) { console.error("Error saving master patient:", error); } };
+    const handleMasterSubmit = async (e) => { e.preventDefault(); if (!masterFormData.name || !masterFormData.bed) return; try { if (editingMasterPatient) { await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...masterFormData, updatedAt: serverTimestamp() }); } else { await addDoc(masterPatientsCollectionRef, { ...masterFormData, facility: selectedFacility, createdAt: serverTimestamp() }); } handleCloseMasterModal(); } catch (error) { console.error("Error saving master patient:", error); } };
     const handleDeleteMasterClick = (patientId) => setConfirmMasterDelete({ isOpen: true, patientId });
     const handleConfirmMasterDelete = async () => { if (confirmMasterDelete.patientId) { try { await deleteDoc(doc(masterPatientsCollectionRef, confirmMasterDelete.patientId)); } catch (error) { console.error("Error deleting master patient:", error); } setConfirmMasterDelete({ isOpen: false, patientId: null }); } };
 
