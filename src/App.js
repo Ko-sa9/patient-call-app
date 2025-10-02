@@ -181,7 +181,6 @@ const AdminPage = () => {
     const [masterModalOpen, setMasterModalOpen] = useState(false);
     const [editingMasterPatient, setEditingMasterPatient] = useState(null);
     const [masterFormData, setMasterFormData] = useState({ patientId: '', name: '', furigana: '', bed: '', day: '月水金', cool: '1' });
-    const [masterSearchTerm, setMasterSearchTerm] = useState('');
     
     const [dailyModalOpen, setDailyModalOpen] = useState(false);
     const [editingDailyPatient, setEditingDailyPatient] = useState(null);
@@ -595,14 +594,40 @@ const StaffPage = () => {
 };
 
 const QrScannerModal = ({ onClose, onScanSuccess, scanResult }) => {
+    const scannerRef = useRef(null);
+
+    useEffect(() => {
+        const scanner = new Html5QrcodeScanner(
+            'qr-reader-container', 
+            {
+                qrbox: { width: 250, height: 250 },
+                fps: 10,
+            }, 
+            false
+        );
+
+        const success = (decodedText, decodedResult) => {
+            onScanSuccess(decodedText, decodedResult);
+        };
+        const error = (err) => {
+            // console.warn(err);
+        };
+        
+        scanner.render(success, error);
+        scannerRef.current = scanner;
+
+        return () => {
+            if (scannerRef.current) {
+                scannerRef.current.clear().catch(error => {
+                    console.error("Failed to clear html5-qrcode-scanner.", error);
+                });
+            }
+        };
+    }, [onScanSuccess]);
+
     return (
         <CustomModal title="QRコードで呼び出し" onClose={onClose} footer={<button onClick={onClose} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">閉じる</button>}>
-            <div className="w-full">
-                <Scanner
-                    onResult={(text, result) => onScanSuccess(text)}
-                    onError={(error) => console.info(error?.message)}
-                />
-            </div>
+            <div id="qr-reader-container" className="w-full"></div>
             {scanResult && (
                 <div className={`mt-4 p-3 rounded text-center font-semibold ${scanResult.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                     {scanResult.message}
@@ -611,6 +636,7 @@ const QrScannerModal = ({ onClose, onScanSuccess, scanResult }) => {
         </CustomModal>
     );
 };
+
 
 // --- 4. Driver Page ---
 const DriverPage = () => {
