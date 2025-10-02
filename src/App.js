@@ -181,7 +181,6 @@ const AdminPage = () => {
     const [masterModalOpen, setMasterModalOpen] = useState(false);
     const [editingMasterPatient, setEditingMasterPatient] = useState(null);
     const [masterFormData, setMasterFormData] = useState({ patientId: '', name: '', furigana: '', bed: '', day: '月水金', cool: '1' });
-    const [masterSearchTerm, setMasterSearchTerm] = useState('');
     
     const [dailyModalOpen, setDailyModalOpen] = useState(false);
     const [editingDailyPatient, setEditingDailyPatient] = useState(null);
@@ -264,7 +263,7 @@ const AdminPage = () => {
                         furigana: patientData.furigana || '', 
                         bed: patientData.bed, 
                         status: '治療中', 
-                        masterPatientId: patientData.patientId,
+                        masterPatientId: patientData.patientId || null,
                         createdAt: serverTimestamp() 
                     });
                 });
@@ -615,6 +614,8 @@ const StaffPage = () => {
 };
 
 const QrScannerModal = ({ onClose, onScanSuccess, scanResult }) => {
+    const scannerRef = useRef(null);
+
     useEffect(() => {
         const scanner = new Html5QrcodeScanner(
             'qr-reader-container', 
@@ -633,11 +634,14 @@ const QrScannerModal = ({ onClose, onScanSuccess, scanResult }) => {
         };
         
         scanner.render(success, error);
+        scannerRef.current = scanner;
 
         return () => {
-            scanner.clear().catch(error => {
-                console.error("Failed to clear html5-qrcode-scanner.", error);
-            });
+            if (scannerRef.current) {
+                scannerRef.current.clear().catch(error => {
+                    console.error("Failed to clear html5-qrcode-scanner.", error);
+                });
+            }
         };
     }, [onScanSuccess]);
 
@@ -900,3 +904,4 @@ export default function App() {
         </AppContext.Provider>
     );
 }
+
