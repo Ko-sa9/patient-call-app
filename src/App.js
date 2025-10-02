@@ -176,13 +176,12 @@ const AdminPage = () => {
     const { selectedFacility, selectedDate, selectedCool } = useContext(AppContext);
     const { dailyList, loading: loadingDaily } = useDailyList();
 
-    const [masterSearchTerm, setMasterSearchTerm] = useState('');
-    
     const [masterPatients, setMasterPatients] = useState([]);
     const [loadingMaster, setLoadingMaster] = useState(true);
     const [masterModalOpen, setMasterModalOpen] = useState(false);
     const [editingMasterPatient, setEditingMasterPatient] = useState(null);
     const [masterFormData, setMasterFormData] = useState({ patientId: '', name: '', furigana: '', bed: '', day: '月水金', cool: '1' });
+    const [masterSearchTerm, setMasterSearchTerm] = useState('');
     
     const [dailyModalOpen, setDailyModalOpen] = useState(false);
     const [editingDailyPatient, setEditingDailyPatient] = useState(null);
@@ -541,27 +540,28 @@ const StaffPage = () => {
     const { selectedFacility, selectedDate } = useContext(AppContext);
     
     const [isScannerOpen, setScannerOpen] = useState(false);
-    const [scanResult, setScanResult] = useState(null);
 
     const actionPatients = allPatients
         .filter(p => p.status === '治療中' || p.status === '呼出中')
         .sort((a, b) => a.bed.localeCompare(b.bed, undefined, {numeric: true}));
 
-    const handleScanSuccess = (decodedText) => {
+    const handleScanSuccess = useCallback((decodedText) => {
+        let result;
         const patientToCall = allPatients.find(p => p.masterPatientId === decodedText && p.status === '治療中');
 
         if (patientToCall) {
             updatePatientStatus(selectedFacility, selectedDate, patientToCall.cool, patientToCall.id, '呼出中');
-            setScanResult({ success: true, message: `${patientToCall.name} さんを呼び出しました。` });
+            result = { success: true, message: `${patientToCall.name} さんを呼び出しました。` };
         } else {
             const alreadyCalled = allPatients.find(p => p.masterPatientId === decodedText);
             if (alreadyCalled) {
-                setScanResult({ success: false, message: `既にお呼び出し済みか、対象外です。` });
+                result = { success: false, message: `既にお呼び出し済みか、対象外です。` };
             } else {
-                setScanResult({ success: false, message: '患者が見つかりません。' });
+                result = { success: false, message: '患者が見つかりません。' };
             }
         }
-    };
+        return result;
+    }, [allPatients, selectedFacility, selectedDate]);
     
     if (loading) return <LoadingSpinner text="呼び出しリストを読み込み中..." />;
 
@@ -572,7 +572,6 @@ const StaffPage = () => {
                 <QrScannerModal 
                     onClose={() => setScannerOpen(false)} 
                     onScanSuccess={handleScanSuccess}
-                    scanResult={scanResult}
                 />
             }
             <div className="bg-white p-6 rounded-lg shadow">
@@ -615,8 +614,25 @@ const StaffPage = () => {
     );
 };
 
-const QrScannerModal = ({ onClose, onScanSuccess, scanResult }) => {
+const QrScannerModal = ({ onClose, onScanSuccess }) => {
+    const [scanResult, setScanResult] = useState(null);
     const scannerRef = useRef(null);
+
+    const handleScan = useCallback((decodedText) => {
+        if (scannerRef.current && scannerRef.current.getState() === 2) { 
+            scannerRef.current.pause(true);
+        }
+        
+        const result = onScanSuccess(decodedText);
+        setScanResult(result);
+
+        setTimeout(() => {
+            setScanResult(null);
+            if (scannerRef.current && scannerRef.current.getState() === 3) {
+                 scannerRef.current.resume();
+            }
+        }, 2000);
+    }, [onScanSuccess]);
 
     useEffect(() => {
         const scanner = new Html5QrcodeScanner(
@@ -627,15 +643,10 @@ const QrScannerModal = ({ onClose, onScanSuccess, scanResult }) => {
             }, 
             false
         );
-
-        const success = (decodedText, decodedResult) => {
-            onScanSuccess(decodedText, decodedResult);
-        };
-        const error = (err) => {
-            // console.warn(err);
-        };
         
-        scanner.render(success, error);
+        scanner.render(handleScan, (error) => {
+            // console.warn(error);
+        });
         scannerRef.current = scanner;
 
         return () => {
@@ -645,7 +656,7 @@ const QrScannerModal = ({ onClose, onScanSuccess, scanResult }) => {
                 });
             }
         };
-    }, [onScanSuccess]);
+    }, [handleScan]);
 
     return (
         <CustomModal title="QRコードで呼び出し" onClose={onClose} footer={<button onClick={onClose} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">閉じる</button>}>
