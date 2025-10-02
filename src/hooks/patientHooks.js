@@ -1,7 +1,7 @@
 import { useContext, useState, useEffect } from 'react';
 import { collection, onSnapshot, query, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { AppContext } from '../context/AppContext';
-import { db } from '../firebase'; // Firebaseの初期化ファイルを別途作成することを推奨
+import { db } from '../firebase';
 
 export const useDailyList = () => {
     const { selectedFacility, selectedDate, selectedCool } = useContext(AppContext);

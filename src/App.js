@@ -1,17 +1,13 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { getFunctions } from 'firebase/functions';
 import QrScannerModal from './components/QrScannerModal';
-import { AppContext, FACILITIES } from './context/AppContext';
+import { AppContext, FACILITIES, getTodayString, getDayQueryString } from './context/AppContext';
 import { useDailyList, useAllDayPatients, updatePatientStatus } from './hooks/patientHooks';
-import { db, auth } from './firebase'; // Firebaseの初期化を分離
-
-// --- Custom Hooks ---
-// useDailyListとuseAllDayPatientsは patientHooks.js に移動しました
-
-// --- Status Update Function ---
-// updatePatientStatusは patientHooks.js に移動しました
+import { db, auth } from './firebase';
+import CustomModal from './components/CustomModal';
+import ConfirmationModal from './components/ConfirmationModal';
+import LoadingSpinner from './components/LoadingSpinner';
 
 const StatusBadge = ({ status }) => {
     const statusStyles = {
