@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import QrScannerModal from './components/QrScannerModal';
+import QrScannerModal from './QrScannerModal';
 import { AppContext, FACILITIES, getTodayString, getDayQueryString } from './context/AppContext';
 import { useDailyList, useAllDayPatients, updatePatientStatus } from './hooks/patientHooks';
 import { db, auth } from './firebase';
-import CustomModal from './components/CustomModal';
-import ConfirmationModal from './components/ConfirmationModal';
-import LoadingSpinner from './components/LoadingSpinner';
+import CustomModal from './CustomModal';
+import ConfirmationModal from './ConfirmationModal';
+import LoadingSpinner from './LoadingSpinner';
 
 const StatusBadge = ({ status }) => {
     const statusStyles = {
