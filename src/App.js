@@ -3,6 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -179,8 +180,7 @@ const AdminPage = () => {
     const [loadingMaster, setLoadingMaster] = useState(true);
     const [masterModalOpen, setMasterModalOpen] = useState(false);
     const [editingMasterPatient, setEditingMasterPatient] = useState(null);
-    const [masterFormData, setMasterFormData] = useState({ name: '', furigana: '', bed: '', day: '月水金', cool: '1' });
-    const [masterSearchTerm, setMasterSearchTerm] = useState('');
+    const [masterFormData, setMasterFormData] = useState({ patientId: '', name: '', furigana: '', bed: '', day: '月水金', cool: '1' });
     
     const [dailyModalOpen, setDailyModalOpen] = useState(false);
     const [editingDailyPatient, setEditingDailyPatient] = useState(null);
@@ -207,12 +207,15 @@ const AdminPage = () => {
 
     const handleOpenMasterModal = (patient = null) => {
         setEditingMasterPatient(patient);
-        setMasterFormData(patient ? { name: patient.name, furigana: patient.furigana || '', bed: patient.bed, day: patient.day, cool: patient.cool } : { name: '', furigana: '', bed: '', day: '月水金', cool: '1' });
+        setMasterFormData(patient ? 
+            { patientId: patient.patientId || '', name: patient.name, furigana: patient.furigana || '', bed: patient.bed, day: patient.day, cool: patient.cool } : 
+            { patientId: '', name: '', furigana: '', bed: '', day: '月水金', cool: '1' }
+        );
         setMasterModalOpen(true);
     };
     const handleCloseMasterModal = () => { setMasterModalOpen(false); setEditingMasterPatient(null); };
     const handleMasterFormChange = (e) => setMasterFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    const handleMasterSubmit = async (e) => { e.preventDefault(); if (!masterFormData.name || !masterFormData.bed) return; try { if (editingMasterPatient) { await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...masterFormData, updatedAt: serverTimestamp() }); } else { await addDoc(masterPatientsCollectionRef, { ...masterFormData, facility: selectedFacility, createdAt: serverTimestamp() }); } handleCloseMasterModal(); } catch (error) { console.error("Error saving master patient:", error); } };
+    const handleMasterSubmit = async (e) => { e.preventDefault(); if (!masterFormData.name || !masterFormData.bed || !masterFormData.patientId) return; try { if (editingMasterPatient) { await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...masterFormData, updatedAt: serverTimestamp() }); } else { await addDoc(masterPatientsCollectionRef, { ...masterFormData, facility: selectedFacility, createdAt: serverTimestamp() }); } handleCloseMasterModal(); } catch (error) { console.error("Error saving master patient:", error); } };
     const handleDeleteMasterClick = (patientId) => setConfirmMasterDelete({ isOpen: true, patientId });
     const handleConfirmMasterDelete = async () => { if (confirmMasterDelete.patientId) { try { await deleteDoc(doc(masterPatientsCollectionRef, confirmMasterDelete.patientId)); } catch (error) { console.error("Error deleting master patient:", error); } setConfirmMasterDelete({ isOpen: false, patientId: null }); } };
 
@@ -254,8 +257,15 @@ const AdminPage = () => {
                 batch.set(listDocRef, { createdAt: serverTimestamp(), facility: selectedFacility, date: selectedDate, cool: selectedCool });
                 masterSnapshot.forEach(patientDoc => {
                     const patientData = patientDoc.data();
-                    const newDailyPatientDocRef = doc(dailyPatientsCollectionRef(selectedCool), patientDoc.id);
-                    batch.set(newDailyPatientDocRef, { name: patientData.name, furigana: patientData.furigana || '', bed: patientData.bed, status: '治療中', masterPatientId: patientDoc.id, createdAt: serverTimestamp() });
+                    const newDailyPatientDocRef = doc(dailyPatientsCollectionRef(selectedCool)); 
+                    batch.set(newDailyPatientDocRef, { 
+                        name: patientData.name, 
+                        furigana: patientData.furigana || '', 
+                        bed: patientData.bed, 
+                        status: '治療中', 
+                        masterPatientId: patientData.patientId,
+                        createdAt: serverTimestamp() 
+                    });
                 });
                 await batch.commit();
             } catch (error) { console.error("Error loading daily patients:", error); alert("読み込みに失敗しました。"); }
@@ -284,10 +294,23 @@ const AdminPage = () => {
             setConfirmClearListModal({ isOpen: false });
         }
     };
+    
+    const copyToClipboard = (text) => {
+        if (!text) return;
+        const C=document.createElement("textarea"); C.value=text; document.body.appendChild(C); C.select(); document.execCommand("copy"); document.body.removeChild(C);
+        alert("患者IDがコピーされました。");
+    };
 
     return (
         <div className="space-y-8">
             {masterModalOpen && <CustomModal title={editingMasterPatient ? "患者情報の編集" : "新規患者登録"} onClose={handleCloseMasterModal} footer={<><button onClick={handleCloseMasterModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleMasterSubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleMasterSubmit} className="space-y-4">
+                <div>
+                    <label className="block font-medium mb-1">患者ID (QRコード用)</label>
+                    <div className="flex">
+                        <input type="text" name="patientId" value={masterFormData.patientId} onChange={handleMasterFormChange} className="w-full p-2 border rounded-l-md" placeholder="電子カルテIDなどを入力" required />
+                        <button type="button" onClick={() => copyToClipboard(masterFormData.patientId)} className="bg-gray-500 hover:bg-gray-600 text-white p-2 rounded-r-md">コピー</button>
+                    </div>
+                </div>
                 <div><label className="block font-medium mb-1">曜日</label><select name="day" value={masterFormData.day} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="月水金">月水金</option><option value="火木土">火木土</option></select></div>
                 <div><label className="block font-medium mb-1">クール</label><select name="cool" value={masterFormData.cool} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
                 <div><label className="block font-medium mb-1">ベッド番号</label><input type="text" name="bed" value={masterFormData.bed} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" required /></div>
@@ -359,19 +382,10 @@ const AdminPage = () => {
             
             <div className="bg-white p-6 rounded-lg shadow">
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
-                    <h3 className="text-xl font-semibold text-gray-800">通常患者マスタ (全クール)</h3>
-                    <div className="flex items-center space-x-2">
-                        <input 
-                            type="search" 
-                            placeholder="氏名, ふりがな, ベッド番号で検索" 
-                            value={masterSearchTerm}
-                            onChange={(e) => setMasterSearchTerm(e.target.value)}
-                            className="p-2 border rounded-md text-sm"
-                        />
-                        <button title="患者マスタ追加" onClick={() => handleOpenMasterModal()} className="flex items-center space-x-2 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                        </button>
-                    </div>
+                    <h3 className="text-xl font-semibold text-gray-800">通常患者マスタ</h3>
+                    <button title="患者マスタ追加" onClick={() => handleOpenMasterModal()} className="flex items-center space-x-2 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
+                    </button>
                 </div>
                 {loadingMaster ? <LoadingSpinner /> : (
                     <div className="overflow-x-auto">
@@ -388,22 +402,11 @@ const AdminPage = () => {
                             </thead>
                             <tbody>
                                 {masterPatients.length > 0 ? 
-                                    masterPatients
-                                    .filter(p => {
-                                        const term = masterSearchTerm.toLowerCase();
-                                        if (!term) return true;
-                                        return p.name.toLowerCase().includes(term) || 
-                                               (p.furigana && p.furigana.toLowerCase().includes(term)) ||
-                                               p.bed.toLowerCase().includes(term);
-                                    })
-                                    .sort((a, b) => {
-                                        const dayOrder = { '月水金': 1, '火木土': 2 };
-                                        const dayCompare = (dayOrder[a.day] || 99) - (dayOrder[b.day] || 99);
-                                        if (dayCompare !== 0) return dayCompare;
-
+                                    masterPatients.sort((a, b) => {
                                         const coolCompare = a.cool.localeCompare(b.cool, undefined, { numeric: true });
-                                        if (coolCompare !== 0) return coolCompare;
-                                        
+                                        if (coolCompare !== 0) {
+                                            return coolCompare;
+                                        }
                                         return a.bed.localeCompare(b.bed, undefined, { numeric: true });
                                     }).map(p => (
                                         <tr key={p.id} className="border-b hover:bg-gray-50">
@@ -437,7 +440,7 @@ const AdminPage = () => {
 const MonitorPage = () => {
     const { allPatients, loading } = useAllDayPatients();
     const callingPatients = allPatients.filter(p => p.status === '呼出中').sort((a, b) => a.bed.localeCompare(b.bed, undefined, {numeric: true}));
-    const treatmentPatients = allPatients.filter(p => p.status === '治療中').sort((a, b) => a.bed.localeCompare(b.bed, undefined, {numeric: true}));
+    const treatmentPatients = allPatients.filter(p => p.status === '治療中');
     const prevCallingPatientIdsRef = useRef(new Set());
     const [isSpeaking, setIsSpeaking] = useState(false);
     const speechQueueRef = useRef([]);
@@ -524,17 +527,49 @@ const StaffPage = () => {
     const { allPatients, loading } = useAllDayPatients();
     const { selectedFacility, selectedDate } = useContext(AppContext);
     
+    const [isScannerOpen, setScannerOpen] = useState(false);
+    const [scanResult, setScanResult] = useState(null);
+
     const actionPatients = allPatients
         .filter(p => p.status === '治療中' || p.status === '呼出中')
         .sort((a, b) => a.bed.localeCompare(b.bed, undefined, {numeric: true}));
 
+    const handleScanSuccess = (decodedText) => {
+        const patientToCall = allPatients.find(p => p.masterPatientId === decodedText && p.status === '治療中');
+
+        if (patientToCall) {
+            updatePatientStatus(selectedFacility, selectedDate, patientToCall.cool, patientToCall.id, '呼出中');
+            setScanResult({ success: true, message: `${patientToCall.name} さんを呼び出しました。` });
+        } else {
+            const alreadyCalled = allPatients.find(p => p.masterPatientId === decodedText);
+            if (alreadyCalled) {
+                setScanResult({ success: false, message: `既にお呼び出し済みか、対象外です。` });
+            } else {
+                setScanResult({ success: false, message: '患者が見つかりません。' });
+            }
+        }
+    };
+    
     if (loading) return <LoadingSpinner text="呼び出しリストを読み込み中..." />;
 
     return (
         <div>
             <h2 className="text-2xl font-bold mb-4">スタッフ用端末</h2>
+            {isScannerOpen && 
+                <QrScannerModal 
+                    onClose={() => setScannerOpen(false)} 
+                    onScanSuccess={handleScanSuccess}
+                    scanResult={scanResult}
+                />
+            }
             <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-xl font-semibold mb-4">呼び出し操作 (全クール)</h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-semibold">呼び出し操作 (全クール)</h3>
+                    <button onClick={() => setScannerOpen(true)} className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v1m6 1V4m-6 1v1m0-1H9m3 0h3m-3 0v1m0 0v1m-6-1V4m6 1v1M4 8h16M4 12h16M4 16h16" /></svg>
+                        <span>QRで呼出</span>
+                    </button>
+                </div>
                 <div className="overflow-x-auto">
                     {actionPatients.length > 0 ? (
                         <div className="space-y-3">
@@ -554,7 +589,7 @@ const StaffPage = () => {
                                     </div>
                                     <div className="flex items-center whitespace-nowrap">
                                         <StatusBadge status={p.status}/>
-                                        <span className="text-sm font-semibold bg-gray-200 text-gray-700 px-2 py-1 rounded mr-3">{p.cool}クール</span>
+                                        <span className="text-sm font-semibold bg-gray-200 text-gray-700 px-2 py-1 rounded ml-2 mr-3">{p.cool}クール</span>
                                         <span className="text-lg font-medium mr-4">No.{p.bed} {p.name} 様</span>
                                     </div>
                                 </div>
@@ -564,6 +599,24 @@ const StaffPage = () => {
                 </div>
             </div>
         </div>
+    );
+};
+
+const QrScannerModal = ({ onClose, onScanSuccess, scanResult }) => {
+    return (
+        <CustomModal title="QRコードで呼び出し" onClose={onClose} footer={<button onClick={onClose} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">閉じる</button>}>
+            <div className="w-full">
+                <Scanner
+                    onResult={(text, result) => onScanSuccess(text)}
+                    onError={(error) => console.info(error?.message)}
+                />
+            </div>
+            {scanResult && (
+                <div className={`mt-4 p-3 rounded text-center font-semibold ${scanResult.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                    {scanResult.message}
+                </div>
+            )}
+        </CustomModal>
     );
 };
 
@@ -813,3 +866,4 @@ export default function App() {
         </AppContext.Provider>
     );
 }
+
