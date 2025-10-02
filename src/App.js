@@ -3,8 +3,9 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
+import QrScannerModal from './components/QrScannerModal';
 
-// --- Firebase Configuration ---
+// -- Firebase Configuration ---
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY, // Netlifyの環境変数から安全に読み込み
   authDomain: "patient-call-app-f5e7f.firebaseapp.com",
@@ -179,7 +180,7 @@ const AdminPage = () => {
     const [loadingMaster, setLoadingMaster] = useState(true);
     const [masterModalOpen, setMasterModalOpen] = useState(false);
     const [editingMasterPatient, setEditingMasterPatient] = useState(null);
-    const [masterFormData, setMasterFormData] = useState({ name: '', furigana: '', bed: '', day: '月水金', cool: '1' });
+    const [masterFormData, setMasterFormData] = useState({ name: '', furigana: '', bed: '', day: '月水金', cool: '1', patientId: '' });
     const [masterSearchTerm, setMasterSearchTerm] = useState('');
     
     const [dailyModalOpen, setDailyModalOpen] = useState(false);
@@ -206,13 +207,18 @@ const AdminPage = () => {
     }, [selectedFacility]);
 
     const handleOpenMasterModal = (patient = null) => {
-        setEditingMasterPatient(patient);
-        setMasterFormData(patient ? { name: patient.name, furigana: patient.furigana || '', bed: patient.bed, day: patient.day, cool: patient.cool } : { name: '', furigana: '', bed: '', day: '月水金', cool: '1' });
+        if (patient) {
+            setEditingMasterPatient(patient);
+            setMasterFormData({ name: patient.name, furigana: patient.furigana || '', bed: patient.bed, day: patient.day, cool: patient.cool, patientId: patient.patientId || '' });
+        } else {
+            setEditingMasterPatient(null);
+            setMasterFormData({ name: '', furigana: '', bed: '', day: '月水金', cool: '1', patientId: crypto.randomUUID() });
+        }
         setMasterModalOpen(true);
     };
     const handleCloseMasterModal = () => { setMasterModalOpen(false); setEditingMasterPatient(null); };
     const handleMasterFormChange = (e) => setMasterFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    const handleMasterSubmit = async (e) => { e.preventDefault(); if (!masterFormData.name || !masterFormData.bed) return; try { if (editingMasterPatient) { await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...masterFormData, updatedAt: serverTimestamp() }); } else { await addDoc(masterPatientsCollectionRef, { ...masterFormData, facility: selectedFacility, createdAt: serverTimestamp() }); } handleCloseMasterModal(); } catch (error) { console.error("Error saving master patient:", error); } };
+    const handleMasterSubmit = async (e) => { e.preventDefault(); if (!masterFormData.name || !masterFormData.bed) return; try { if (editingMasterPatient) { await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...masterFormData, updatedAt: serverTimestamp() }); } else { await addDoc(masterPatientsCollectioneRef, { ...masterFormData, facility: selectedFacility, createdAt: serverTimestamp() }); } handleCloseMasterModal(); } catch (error) { console.error("Error saving master patient:", error); } };
     const handleDeleteMasterClick = (patientId) => setConfirmMasterDelete({ isOpen: true, patientId });
     const handleConfirmMasterDelete = async () => { if (confirmMasterDelete.patientId) { try { await deleteDoc(doc(masterPatientsCollectionRef, confirmMasterDelete.patientId)); } catch (error) { console.error("Error deleting master patient:", error); } setConfirmMasterDelete({ isOpen: false, patientId: null }); } };
 
@@ -288,6 +294,13 @@ const AdminPage = () => {
     return (
         <div className="space-y-8">
             {masterModalOpen && <CustomModal title={editingMasterPatient ? "患者情報の編集" : "新規患者登録"} onClose={handleCloseMasterModal} footer={<><button onClick={handleCloseMasterModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleMasterSubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleMasterSubmit} className="space-y-4">
+                <div>
+                    <label className="block font-medium mb-1">患者ID (QRコード用)</label>
+                    <div className="flex items-center">
+                        <input type="text" name="patientId" value={masterFormData.patientId} readOnly className="w-full p-2 border rounded-md bg-gray-100" />
+                        <button type="button" onClick={() => navigator.clipboard.writeText(masterFormData.patientId)} className="ml-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg">コピー</button>
+                    </div>
+                </div>
                 <div><label className="block font-medium mb-1">曜日</label><select name="day" value={masterFormData.day} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="月水金">月水金</option><option value="火木土">火木土</option></select></div>
                 <div><label className="block font-medium mb-1">クール</label><select name="cool" value={masterFormData.cool} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
                 <div><label className="block font-medium mb-1">ベッド番号</label><input type="text" name="bed" value={masterFormData.bed} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" required /></div>
@@ -464,7 +477,12 @@ const MonitorPage = () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: textToSpeak }),
         })
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`Server error: ${res.status}`);
+            }
+            return res.json();
+        })
         .then(data => {
             if (data.audioContent) {
                 const audio = new Audio("data:audio/mp3;base64," + data.audioContent);
@@ -523,6 +541,7 @@ const MonitorPage = () => {
 const StaffPage = () => {
     const { allPatients, loading } = useAllDayPatients();
     const { selectedFacility, selectedDate } = useContext(AppContext);
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
     
     const actionPatients = allPatients
         .filter(p => p.status === '治療中' || p.status === '呼出中')
@@ -532,7 +551,17 @@ const StaffPage = () => {
 
     return (
         <div>
-            <h2 className="text-2xl font-bold mb-4">スタッフ用端末</h2>
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold">スタッフ用端末</h2>
+                <button onClick={() => setIsScannerOpen(true)} className="bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-4 rounded-lg flex items-center space-x-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 12a8 8 0 018-8v0a8 8 0 018 8v0a8 8 0 01-8 8v0a8 8 0 01-8-8v0z" />
+                    </svg>
+                    <span>QRで呼出</span>
+                </button>
+            </div>
+            {isScannerOpen && <QrScannerModal onClose={() => setIsScannerOpen(false)} />}
             <div className="bg-white p-6 rounded-lg shadow">
                 <h3 className="text-xl font-semibold mb-4">呼び出し操作 (全クール)</h3>
                 <div className="overflow-x-auto">
