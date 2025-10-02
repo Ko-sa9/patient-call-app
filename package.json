@@ -9,6 +9,7 @@
     "@testing-library/user-event": "^13.5.0",
     "@yudiel/react-qr-scanner": "^2.3.1",
     "firebase": "^12.1.0",
+    "html5-qrcode": "^2.3.8",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-scripts": "5.0.1",
