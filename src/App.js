@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 
 // --- Firebase Configuration ---
 const firebaseConfig = {
@@ -617,65 +617,66 @@ const StaffPage = () => {
 // 修正対象のコンポーネント
 const QrScannerModal = ({ onClose, onScanSuccess }) => {
     const [scanResult, setScanResult] = useState(null);
-    const scannerRef = useRef(null);
     
-    // onScanSuccess関数が親コンポーネントの再描画で変更されても、
-    // 常に最新の関数を参照するための仕組み
+    // 連続スキャンを制御するためのフラグ
+    const isProcessingRef = useRef(false);
+    
     const onScanSuccessRef = useRef(onScanSuccess);
     useEffect(() => {
         onScanSuccessRef.current = onScanSuccess;
     }, [onScanSuccess]);
 
-    // このuseEffectは、コンポーネントが最初に表示されたとき一度だけ実行される
     useEffect(() => {
-        const scanner = new Html5QrcodeScanner(
-            'qr-reader-container', 
-            {
-                qrbox: { width: 250, height: 250 },
-                fps: 10,
-            }, 
-            false // verbose (詳細なログ出力) を無効にする
-        );
+        // UIなしのQRコードリーダーのインスタンスを生成
+        const html5QrCode = new Html5Qrcode('qr-reader-container');
         
-        // スキャン成功時の処理
-        const handleScan = (decodedText) => {
-            // カメラを一時停止
-            if (scanner.getState() === 2 /* SCANNING */) {
-                scanner.pause(true);
+        // スキャン成功時のコールバック関数
+        const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+            // 処理中の場合は何もしない
+            if (isProcessingRef.current) {
+                return;
             }
-            
-            // useRefに格納した最新の関数を呼び出す
-            const result = onScanSuccessRef.current(decodedText);
-            setScanResult(result);
+            // 処理中フラグを立てる
+            isProcessingRef.current = true;
 
-            // 2秒後にメッセージを消して、カメラを再開
+            // 親コンポーネントの関数を呼び出してメインの処理を実行
+            const result = onScanSuccessRef.current(decodedText);
+            setScanResult(result); // 結果メッセージを表示
+
+            // 0.5秒後に処理中フラグを解除
             setTimeout(() => {
-                setScanResult(null);
-                if (scanner.getState() === 3 /* PAUSED */) {
-                    scanner.resume();
-                }
-            }, 2000);
+                isProcessingRef.current = false;
+            }, 500);
         };
 
-        // スキャナを描画
-        scanner.render(handleScan, (error) => {
-            // 読み取り失敗時のエラーは無視する
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+        // モーダルが表示されたら、カメラを起動する
+        html5QrCode.start(
+            { facingMode: "environment" }, // 背面カメラを使用
+            config,
+            qrCodeSuccessCallback,
+            undefined // エラーコールバックは今回は未使用
+        ).catch(err => {
+            console.error("Unable to start scanning.", err);
+            // カメラの起動に失敗した場合のメッセージを表示
+            setScanResult({ success: false, message: "カメラの起動に失敗しました。ブラウザの許可設定などを確認してください。" });
         });
 
-        scannerRef.current = scanner;
-
-        // コンポーネントが非表示になるときに一度だけ実行されるクリーンアップ処理
+        // コンポーネントが非表示になる（モーダルが閉じる）時に実行されるクリーンアップ処理
         return () => {
-            if (scannerRef.current) {
-                scannerRef.current.clear().catch(error => {
-                    console.error("Failed to clear html5-qrcode-scanner.", error);
+            // カメラが起動中であれば停止する
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().catch(err => {
+                    console.error("Failed to stop QR Code scanning.", err);
                 });
             }
         };
-    }, []); // 依存配列を空にすることで、初回マウント時に一度だけ実行されるようにする
+    }, []); // 依存配列を空にして、初回表示時に一度だけ実行
 
     return (
         <CustomModal title="QRコードで呼び出し" onClose={onClose} footer={<button onClick={onClose} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">閉じる</button>}>
+            {/* このdivにカメラ映像が描画される */}
             <div id="qr-reader-container" className="w-full"></div>
             {scanResult && (
                 <div className={`mt-4 p-3 rounded text-center font-semibold ${scanResult.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
