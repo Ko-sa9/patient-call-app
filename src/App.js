@@ -614,26 +614,19 @@ const StaffPage = () => {
     );
 };
 
+// 修正対象のコンポーネント
 const QrScannerModal = ({ onClose, onScanSuccess }) => {
     const [scanResult, setScanResult] = useState(null);
     const scannerRef = useRef(null);
-
-    const handleScan = useCallback((decodedText) => {
-        if (scannerRef.current && scannerRef.current.getState() === 2) { 
-            scannerRef.current.pause(true);
-        }
-        
-        const result = onScanSuccess(decodedText);
-        setScanResult(result);
-
-        setTimeout(() => {
-            setScanResult(null);
-            if (scannerRef.current && scannerRef.current.getState() === 3) {
-                 scannerRef.current.resume();
-            }
-        }, 2000);
+    
+    // onScanSuccess関数が親コンポーネントの再描画で変更されても、
+    // 常に最新の関数を参照するための仕組み
+    const onScanSuccessRef = useRef(onScanSuccess);
+    useEffect(() => {
+        onScanSuccessRef.current = onScanSuccess;
     }, [onScanSuccess]);
 
+    // このuseEffectは、コンポーネントが最初に表示されたとき一度だけ実行される
     useEffect(() => {
         const scanner = new Html5QrcodeScanner(
             'qr-reader-container', 
@@ -641,14 +634,37 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
                 qrbox: { width: 250, height: 250 },
                 fps: 10,
             }, 
-            false
+            false // verbose (詳細なログ出力) を無効にする
         );
         
+        // スキャン成功時の処理
+        const handleScan = (decodedText) => {
+            // カメラを一時停止
+            if (scanner.getState() === 2 /* SCANNING */) {
+                scanner.pause(true);
+            }
+            
+            // useRefに格納した最新の関数を呼び出す
+            const result = onScanSuccessRef.current(decodedText);
+            setScanResult(result);
+
+            // 2秒後にメッセージを消して、カメラを再開
+            setTimeout(() => {
+                setScanResult(null);
+                if (scanner.getState() === 3 /* PAUSED */) {
+                    scanner.resume();
+                }
+            }, 2000);
+        };
+
+        // スキャナを描画
         scanner.render(handleScan, (error) => {
-            // console.warn(error);
+            // 読み取り失敗時のエラーは無視する
         });
+
         scannerRef.current = scanner;
 
+        // コンポーネントが非表示になるときに一度だけ実行されるクリーンアップ処理
         return () => {
             if (scannerRef.current) {
                 scannerRef.current.clear().catch(error => {
@@ -656,7 +672,7 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
                 });
             }
         };
-    }, [handleScan]);
+    }, []); // 依存配列を空にすることで、初回マウント時に一度だけ実行されるようにする
 
     return (
         <CustomModal title="QRコードで呼び出し" onClose={onClose} footer={<button onClick={onClose} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">閉じる</button>}>
