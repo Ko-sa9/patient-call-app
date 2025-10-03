@@ -453,24 +453,43 @@ const MonitorPage = () => {
     const { allPatients, loading } = useAllDayPatients();
     const callingPatients = allPatients.filter(p => p.status === '呼出中').sort((a, b) => a.bed.localeCompare(b.bed, undefined, {numeric: true}));
     const treatmentPatients = allPatients.filter(p => p.status === '治療中').sort((a, b) => a.bed.localeCompare(b.bed, undefined, {numeric: true}));
+    
     const prevCallingPatientIdsRef = useRef(new Set());
     const [isSpeaking, setIsSpeaking] = useState(false);
     const speechQueueRef = useRef([]);
+    
+    // --- 音声停止機能のために追加 ---
+    const currentAudioRef = useRef(null); // 現在再生中のAudioオブジェクトを管理
+    const nowPlayingRef = useRef(null);   // 現在再生中の患者情報を管理
+    const nextSpeechTimerRef = useRef(null); // 次の再生までのタイマーを管理
+    // --- ここまで ---
 
-    const speakNextInQueue = () => {
+    const speakNextInQueue = useCallback(() => {
+        // 既存のタイマーがあればクリア
+        if (nextSpeechTimerRef.current) {
+            clearTimeout(nextSpeechTimerRef.current);
+            nextSpeechTimerRef.current = null;
+        }
+
+        // キューが空なら再生終了
         if (speechQueueRef.current.length === 0) {
             setIsSpeaking(false);
+            nowPlayingRef.current = null;
             return;
         }
+
         setIsSpeaking(true);
         const patient = speechQueueRef.current.shift();
+        nowPlayingRef.current = patient; // 再生中の患者を記録
+
         const nameToSpeak = patient.furigana || patient.name;
         const textToSpeak = `${nameToSpeak}さんのお迎えのかた、${patient.bed}番ベッドへお願いします。`;
         
         const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app";
 
         if (!textToSpeak || textToSpeak.trim() === "") {
-            setTimeout(speakNextInQueue, 1000);
+            // テキストが空なら1秒後に次へ
+            nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000);
             return;
         }
 
@@ -483,25 +502,60 @@ const MonitorPage = () => {
         .then(data => {
             if (data.audioContent) {
                 const audio = new Audio("data:audio/mp3;base64," + data.audioContent);
+                currentAudioRef.current = audio; // Audioオブジェクトを記録
                 audio.play();
-                audio.onended = () => setTimeout(speakNextInQueue, 1000);
+                audio.onended = () => {
+                    currentAudioRef.current = null;
+                    // 再生終了後、1秒待ってから次のキューへ
+                    nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000);
+                };
             } else {
                 throw new Error(data.error || 'Audio content not found');
             }
         })
         .catch((error) => {
             console.error("Speech synthesis failed:", error);
-            setTimeout(speakNextInQueue, 1000);
+            currentAudioRef.current = null;
+             // エラー時も1秒待ってから次へ
+            nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000);
         });
-    };
+    }, []); // 依存配列は空
 
     useEffect(() => {
         const currentCallingIds = new Set(callingPatients.map(p => p.id));
-        const newPatientsToCall = callingPatients.filter(p => !prevCallingPatientIdsRef.current.has(p.id));
+        const prevCallingIds = prevCallingPatientIdsRef.current;
 
+        // 1. 新しく呼び出しリストに追加された患者を特定し、キューに追加
+        const newPatientsToCall = callingPatients.filter(p => !prevCallingIds.has(p.id));
         if (newPatientsToCall.length > 0) {
             speechQueueRef.current.push(...newPatientsToCall);
+            // 現在再生中でなければ、再生を開始する
             if (!isSpeaking) {
+                speakNextInQueue();
+            }
+        }
+        
+        // 2. 呼び出しリストから削除された（キャンセルされた）患者を特定
+        const cancelledPatientIds = [...prevCallingIds].filter(id => !currentCallingIds.has(id));
+        if (cancelledPatientIds.length > 0) {
+            const cancelledIdSet = new Set(cancelledPatientIds);
+
+            // 3. 再生待機キューの中からキャンセルされた患者を削除
+            speechQueueRef.current = speechQueueRef.current.filter(p => !cancelledIdSet.has(p.id));
+            
+            // 4. もし現在再生中の患者がキャンセルされた場合、音声を停止
+            if (nowPlayingRef.current && cancelledIdSet.has(nowPlayingRef.current.id)) {
+                if (currentAudioRef.current) {
+                    currentAudioRef.current.pause(); // 音声を停止
+                    currentAudioRef.current = null;
+                }
+                nowPlayingRef.current = null;
+                // 次の再生タイマーもキャンセル
+                if (nextSpeechTimerRef.current) {
+                    clearTimeout(nextSpeechTimerRef.current);
+                    nextSpeechTimerRef.current = null;
+                }
+                // 即座に次の患者の再生を開始
                 speakNextInQueue();
             }
         }
@@ -532,7 +586,6 @@ const MonitorPage = () => {
         </div>
     );
 };
-
 
 // --- 3. Staff Page ---
 const StaffPage = () => {
@@ -646,7 +699,7 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
             // 0.5秒後に処理中フラグを解除
             setTimeout(() => {
                 isProcessingRef.current = false;
-            }, 500);
+            }, 1000);
         };
 
         const config = { fps: 10, qrbox: { width: 250, height: 250 } };
