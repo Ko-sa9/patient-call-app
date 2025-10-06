@@ -543,9 +543,10 @@ const AdminPage = () => {
                     <div>
                         <input type="search" placeholder="患者ID, 氏名, ふりがな, ベッド番号で検索" value={tempPatientSearchTerm} onChange={(e) => setTempPatientSearchTerm(e.target.value)} className="w-full p-2 border rounded-md mb-4" />
                         <div className="max-h-60 overflow-y-auto space-y-2">
+                            {/* --- ▼ 臨時患者検索の絞り込みロジックを修正 --- */}
                             {masterPatients.filter(p => {
                                 const term = tempPatientSearchTerm.toLowerCase();
-                                if (!term) return true;
+                                if (!term) return false; // 検索語が空の場合は何も表示しない
                                 return (p.patientId && p.patientId.toLowerCase().includes(term)) || 
                                        (p.name && p.name.toLowerCase().includes(term)) || 
                                        (p.furigana && p.furigana.toLowerCase().includes(term)) || 
