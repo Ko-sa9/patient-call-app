@@ -187,9 +187,7 @@ const AdminPage = () => {
     
     const [furiganaParts, setFuriganaParts] = useState({ last: '', first: '' });
     
-    // --- ▼ 手動編集を管理するための ref ---
     const isFuriganaManuallyEdited = useRef(false);
-    // --- ここまで ---
     
     const [masterSearchTerm, setMasterSearchTerm] = useState('');
     
@@ -241,19 +239,25 @@ const AdminPage = () => {
         return () => unsubscribe();
     }, [selectedFacility]);
     
+    // --- ▼ ふりがな結合ロジックを修正 ---
     useEffect(() => {
-        // 手動編集中は、自動結合を停止
         if (isFuriganaManuallyEdited.current) return;
         
+        // 姓と名のふりがなを、空でない方だけ選んで半角スペースで結合
+        const combinedFurigana = [furiganaParts.last, furiganaParts.first]
+            .filter(Boolean) // これで空の文字列が除去される
+            .join(' ');
+
         setMasterFormData(prev => ({
             ...prev,
-            furigana: `${furiganaParts.last}${furiganaParts.first}`
+            furigana: combinedFurigana,
         }));
     }, [furiganaParts]);
+    // --- ここまで ---
 
     const handleOpenMasterModal = (patient = null) => {
         setEditingMasterPatient(patient);
-        isFuriganaManuallyEdited.current = false; // 手動編集フラグをリセット
+        isFuriganaManuallyEdited.current = false;
 
         if (patient) {
             setMasterFormData({ 
@@ -265,7 +269,6 @@ const AdminPage = () => {
                 day: patient.day, 
                 cool: patient.cool 
             });
-            // 編集時は、既存のふりがなを手動編集用にセット
             if(patient.furigana) {
                  isFuriganaManuallyEdited.current = true;
             }
@@ -283,22 +286,17 @@ const AdminPage = () => {
     const handleMasterFormChange = (e) => {
         const { name, value } = e.target;
 
-        // 手動でふりがなを編集した場合
         if (name === 'furigana') {
-            isFuriganaManuallyEdited.current = true; // 手動編集フラグを立てる
+            isFuriganaManuallyEdited.current = true;
             setMasterFormData(prev => ({ ...prev, furigana: value }));
-            return; // ここで処理を終了
+            return;
         }
 
-        // 姓・名の入力値をメインのstateに反映
         setMasterFormData(prev => ({ ...prev, [name]: value }));
 
-        // 手動編集モードでなければ、自動入力を試みる
         if (!isFuriganaManuallyEdited.current) {
             if (name === 'lastName') {
-                 // isKanaでひらがな・カタカナ両方の入力を受け付ける
                 if (wanakana.isKana(value)) {
-                    // toHiraganaでひらがなを出力
                     setFuriganaParts(prev => ({ ...prev, last: wanakana.toHiragana(value) }));
                 }
             } else if (name === 'firstName') {
@@ -438,7 +436,6 @@ const AdminPage = () => {
                 
                 <div>
                     <label className="block font-medium mb-1">ふりがな (ひらがな)</label>
-                    {/* ▼ readOnlyを削除し、手動編集可能に */}
                     <input 
                         type="text" 
                         name="furigana" 
