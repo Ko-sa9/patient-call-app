@@ -180,7 +180,11 @@ const AdminPage = () => {
     const [loadingMaster, setLoadingMaster] = useState(true);
     const [masterModalOpen, setMasterModalOpen] = useState(false);
     const [editingMasterPatient, setEditingMasterPatient] = useState(null);
-    const [masterFormData, setMasterFormData] = useState({ patientId: '', name: '', furigana: '', bed: '', day: '月水金', cool: '1' });
+    
+    // ▼ masterFormData の初期値を変更
+    const initialMasterFormData = { patientId: '', lastName: '', firstName: '', furigana: '', bed: '', day: '月水金', cool: '1' };
+    const [masterFormData, setMasterFormData] = useState(initialMasterFormData);
+    
     const [masterSearchTerm, setMasterSearchTerm] = useState('');
     
     const [dailyModalOpen, setDailyModalOpen] = useState(false);
@@ -192,31 +196,112 @@ const AdminPage = () => {
     const [confirmLoadModal, setConfirmLoadModal] = useState({isOpen: false, onConfirm: () => {}});
     const [confirmClearListModal, setConfirmClearListModal] = useState({ isOpen: false });
 
+    // --- ▼ ふりがな自動入力のための state と ref ---
+    const [tokenizer, setTokenizer] = useState(null);
+    const isAutoFuriganaEnabled = useRef(true);
+    // --- ここまで ---
 
     const masterPatientsCollectionRef = collection(db, 'patients');
     const dailyPatientsCollectionRef = (cool) => collection(db, 'daily_lists', `${selectedDate}_${selectedFacility}_${cool}`, 'patients');
+
+    // ▼ kuromoji.js の辞書ファイルを読み込む useEffect
+    useEffect(() => {
+        window.kuromoji.builder({ dicPath: "https://unpkg.com/kuromoji@0.1.2/dict/" }).build((err, tokenizer) => {
+            if (err) {
+                console.error("Kuromoji tokenizerの初期化に失敗しました。", err);
+                return;
+            }
+            setTokenizer(tokenizer);
+        });
+    }, []);
 
     useEffect(() => {
         setLoadingMaster(true);
         const q = query(masterPatientsCollectionRef, where("facility", "==", selectedFacility));
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            setMasterPatients(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            // ▼ lastName, firstName から name を再構築
+            const patientsData = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return { 
+                    id: doc.id, 
+                    ...data,
+                    name: `${data.lastName || ''} ${data.firstName || ''}`.trim() // 表示用にnameを結合
+                };
+            });
+            setMasterPatients(patientsData);
             setLoadingMaster(false);
         });
         return () => unsubscribe();
     }, [selectedFacility]);
+    
+    // ▼ ふりがな自動入力のロジック
+    useEffect(() => {
+        if (!tokenizer || !isAutoFuriganaEnabled.current) return;
+
+        const { lastName, firstName } = masterFormData;
+        const fullName = `${lastName || ''}${firstName || ''}`;
+        
+        if (fullName) {
+            const tokens = tokenizer.tokenize(fullName);
+            const furigana = tokens.map(token => token.reading || '').join('');
+            setMasterFormData(prev => ({ ...prev, furigana }));
+        } else {
+            setMasterFormData(prev => ({ ...prev, furigana: '' }));
+        }
+    }, [masterFormData.lastName, masterFormData.firstName, tokenizer]);
+
 
     const handleOpenMasterModal = (patient = null) => {
         setEditingMasterPatient(patient);
-        setMasterFormData(patient ? 
-            { patientId: patient.patientId || '', name: patient.name, furigana: patient.furigana || '', bed: patient.bed, day: patient.day, cool: patient.cool } : 
-            { patientId: '', name: '', furigana: '', bed: '', day: '月水金', cool: '1' }
-        );
+        if (patient) {
+            // 編集時は、保存されているデータをセット
+            setMasterFormData({ 
+                patientId: patient.patientId || '', 
+                lastName: patient.lastName || '',
+                firstName: patient.firstName || '',
+                furigana: patient.furigana || '', 
+                bed: patient.bed, 
+                day: patient.day, 
+                cool: patient.cool 
+            });
+        } else {
+            // 新規登録時は初期化
+            setMasterFormData(initialMasterFormData);
+        }
+        isAutoFuriganaEnabled.current = true; // モーダルを開くたびに自動入力を有効化
         setMasterModalOpen(true);
     };
+    
     const handleCloseMasterModal = () => { setMasterModalOpen(false); setEditingMasterPatient(null); };
-    const handleMasterFormChange = (e) => setMasterFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    const handleMasterSubmit = async (e) => { e.preventDefault(); if (!masterFormData.name || !masterFormData.bed || !masterFormData.patientId) return; try { if (editingMasterPatient) { await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...masterFormData, updatedAt: serverTimestamp() }); } else { await addDoc(masterPatientsCollectionRef, { ...masterFormData, facility: selectedFacility, createdAt: serverTimestamp() }); } handleCloseMasterModal(); } catch (error) { console.error("Error saving master patient:", error); } };
+    
+    const handleMasterFormChange = (e) => {
+        const { name, value } = e.target;
+        // ふりがな欄を手動で編集したら、自動入力を無効化
+        if (name === 'furigana') {
+            isAutoFuriganaEnabled.current = false;
+        }
+        setMasterFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleMasterSubmit = async (e) => { 
+        e.preventDefault(); 
+        if (!masterFormData.lastName || !masterFormData.firstName || !masterFormData.bed || !masterFormData.patientId) return; 
+        
+        // 保存するデータから `name` を除外（lastName, firstNameで管理するため）
+        const { name, ...dataToSave } = masterFormData;
+
+        try { 
+            if (editingMasterPatient) { 
+                await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...dataToSave, updatedAt: serverTimestamp() }); 
+            } else { 
+                await addDoc(masterPatientsCollectionRef, { ...dataToSave, facility: selectedFacility, createdAt: serverTimestamp() }); 
+            } 
+            handleCloseMasterModal(); 
+        } catch (error) { 
+            console.error("Error saving master patient:", error); 
+        } 
+    };
+
     const handleDeleteMasterClick = (patientId) => setConfirmMasterDelete({ isOpen: true, patientId });
     const handleConfirmMasterDelete = async () => { if (confirmMasterDelete.patientId) { try { await deleteDoc(doc(masterPatientsCollectionRef, confirmMasterDelete.patientId)); } catch (error) { console.error("Error deleting master patient:", error); } setConfirmMasterDelete({ isOpen: false, patientId: null }); } };
 
@@ -260,7 +345,8 @@ const AdminPage = () => {
                     const patientData = patientDoc.data();
                     const newDailyPatientDocRef = doc(dailyPatientsCollectionRef(selectedCool)); 
                     batch.set(newDailyPatientDocRef, { 
-                        name: patientData.name, 
+                        // ▼ 読み込み時も lastName と firstName から name を生成
+                        name: `${patientData.lastName || ''} ${patientData.firstName || ''}`.trim(), 
                         furigana: patientData.furigana || '', 
                         bed: patientData.bed, 
                         status: '治療中', 
@@ -298,6 +384,7 @@ const AdminPage = () => {
 
     return (
         <div className="space-y-8">
+            {/* ▼ 登録フォームのJSXを変更 */}
             {masterModalOpen && <CustomModal title={editingMasterPatient ? "患者情報の編集" : "新規患者登録"} onClose={handleCloseMasterModal} footer={<><button onClick={handleCloseMasterModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleMasterSubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleMasterSubmit} className="space-y-4">
                 <div>
                     <label className="block font-medium mb-1">患者ID (QRコード用)</label>
@@ -306,21 +393,39 @@ const AdminPage = () => {
                 <div><label className="block font-medium mb-1">曜日</label><select name="day" value={masterFormData.day} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="月水金">月水金</option><option value="火木土">火木土</option></select></div>
                 <div><label className="block font-medium mb-1">クール</label><select name="cool" value={masterFormData.cool} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
                 <div><label className="block font-medium mb-1">ベッド番号</label><input type="text" name="bed" value={masterFormData.bed} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" required /></div>
-                <div><label className="block font-medium mb-1">氏名</label><input type="text" name="name" value={masterFormData.name} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" required /></div>
-                <div><label className="block font-medium mb-1">ふりがな</label><input type="text" name="furigana" value={masterFormData.furigana} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="例：やまだ たろう" /></div>
+                
+                {/* --- 氏名入力欄の変更 --- */}
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="block font-medium mb-1">姓</label>
+                        <input type="text" name="lastName" value={masterFormData.lastName} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="例：山田" required />
+                    </div>
+                    <div>
+                        <label className="block font-medium mb-1">名</label>
+                        <input type="text" name="firstName" value={masterFormData.firstName} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="例：太郎" required />
+                    </div>
+                </div>
+                {/* --- ここまで --- */}
+                
+                <div>
+                    <label className="block font-medium mb-1">ふりがな (カタカナ)</label>
+                    <input type="text" name="furigana" value={masterFormData.furigana} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="自動入力されます" />
+                </div>
             </form></CustomModal>}
+
             {dailyModalOpen && <CustomModal title={editingDailyPatient ? "臨時情報の編集" : "臨時患者の追加"} onClose={handleCloseDailyModal} footer={<><button onClick={handleCloseDailyModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleDailySubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleDailySubmit} className="space-y-4"><div><label className="block font-medium mb-1">ベッド番号</label><input type="text" name="bed" value={dailyFormData.bed} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /></div><div><label className="block font-medium mb-1">氏名</label><input type="text" name="name" value={dailyFormData.name} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /></div><div><label className="block font-medium mb-1">ふりがな</label><input type="text" name="furigana" value={dailyFormData.furigana} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" placeholder="例：りんじ たろう"/></div></form></CustomModal>}
             {confirmMasterDelete.isOpen && <ConfirmationModal title="マスタから削除" message="この患者情報をマスタから完全に削除しますか？" onConfirm={handleConfirmMasterDelete} onCancel={() => setConfirmMasterDelete({ isOpen: false, patientId: null })} confirmText="削除" confirmColor="red" />}
             {confirmDailyDelete.isOpen && <ConfirmationModal title="リストから削除" message="この患者を本日のリストから削除しますか？マスタ登録は残ります。" onConfirm={handleConfirmDailyDelete} onCancel={() => setConfirmDailyDelete({ isOpen: false, patientId: null })} confirmText="削除" confirmColor="red" />}
             {confirmLoadModal.isOpen && <ConfirmationModal title="読み込みの確認" message="既にリストが存在します。上書きしてマスタから再読み込みしますか？" onConfirm={confirmLoadModal.onConfirm} onCancel={() => setConfirmLoadModal({ isOpen: false, onConfirm: () => {} })} confirmText="再読み込み" confirmColor="blue" />}
             {confirmClearListModal.isOpen && <ConfirmationModal title="リストの一括削除" message={`【${selectedFacility} | ${selectedDate} | ${selectedCool}クール】のリストを完全に削除します。よろしいですか？`} onConfirm={handleClearDailyList} onCancel={() => setConfirmClearListModal({ isOpen: false })} confirmText="一括削除" confirmColor="red" />}
 
+            {/* --- ここから下のJSXは変更なし --- */}
+            
             <div className="bg-white p-6 rounded-lg shadow-md">
                 <h3 className="text-xl font-semibold text-gray-800 border-b pb-3 mb-4">本日の呼び出しリスト作成</h3>
                 <p className="text-gray-600 mb-4">グローバル設定（画面上部）で施設・日付・クールを選択し、下のボタンで対象患者を読み込みます。</p>
                 <button onClick={handleLoadPatients} className="w-full md:w-auto bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg transition">対象患者を読み込み</button>
             </div>
-
             <div className="bg-white p-6 rounded-lg shadow">
                  <div className="flex justify-between items-center mb-4 border-b pb-2">
                     <h3 className="text-xl font-semibold text-gray-800">リスト ({selectedCool}クール)</h3>
@@ -371,7 +476,6 @@ const AdminPage = () => {
                 </div>
                 ) : <p className="text-center py-8 text-gray-500">リストが空です。上記ボタンから患者を読み込んでください。</p>)}
             </div>
-            
             <div className="bg-white p-6 rounded-lg shadow">
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
                     <h3 className="text-xl font-semibold text-gray-800">通常患者マスタ</h3>
@@ -407,6 +511,7 @@ const AdminPage = () => {
                                     .filter(p => {
                                         const term = masterSearchTerm.toLowerCase();
                                         if (!term) return true;
+                                        // ▼ 検索対象に name (結合後の氏名) を使用
                                         return p.name.toLowerCase().includes(term) || 
                                                (p.furigana && p.furigana.toLowerCase().includes(term)) ||
                                                p.bed.toLowerCase().includes(term);
@@ -415,10 +520,8 @@ const AdminPage = () => {
                                         const dayOrder = { '月水金': 1, '火木土': 2 };
                                         const dayCompare = (dayOrder[a.day] || 99) - (dayOrder[b.day] || 99);
                                         if (dayCompare !== 0) return dayCompare;
-
                                         const coolCompare = a.cool.localeCompare(b.cool, undefined, { numeric: true });
                                         if (coolCompare !== 0) return coolCompare;
-                                        
                                         return a.bed.localeCompare(b.bed, undefined, { numeric: true });
                                     }).map(p => (
                                         <tr key={p.id} className="border-b hover:bg-gray-50">
@@ -431,7 +534,7 @@ const AdminPage = () => {
                                             <td className="p-2 text-sm whitespace-nowrap">{p.day}</td>
                                             <td className="p-2 text-sm whitespace-nowrap">{p.cool}</td>
                                             <td className="p-2 text-sm whitespace-nowrap">{p.bed}</td>
-                                            <td className="p-2 text-sm whitespace-nowrap">{p.name}</td>
+                                            <td className="p-2 text-sm whitespace-nowrap">{p.name}</td> {/* 表示は結合されたname */}
                                             <td className="p-2 text-sm whitespace-nowrap">{p.furigana}</td>
                                         </tr>
                                     )) : 
