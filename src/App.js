@@ -195,32 +195,13 @@ const AdminPage = () => {
     const [confirmLoadModal, setConfirmLoadModal] = useState({isOpen: false, onConfirm: () => {}});
     const [confirmClearListModal, setConfirmClearListModal] = useState({ isOpen: false });
 
-    const [tokenizer, setTokenizer] = useState(null);
-    const isAutoFuriganaEnabled = useRef(true);
-
     const masterPatientsCollectionRef = collection(db, 'patients');
     const dailyPatientsCollectionRef = (cool) => collection(db, 'daily_lists', `${selectedDate}_${selectedFacility}_${cool}`, 'patients');
-
-    useEffect(() => {
-        // kuromojiの初期化処理（エラーが発生してもアプリが停止しないように修正）
-        if (window.kuromoji) {
-            window.kuromoji.builder({ dicPath: "https://unpkg.com/kuromoji@0.1.2/dict/" }).build((err, tokenizer) => {
-                if (err) {
-                    console.error("Kuromoji tokenizerの初期化に失敗しました。", err);
-                    return;
-                }
-                setTokenizer(tokenizer);
-            });
-        } else {
-            console.error("kuromoji.jsが読み込まれていません。");
-        }
-    }, []);
 
     useEffect(() => {
         setLoadingMaster(true);
         const q = query(masterPatientsCollectionRef, where("facility", "==", selectedFacility));
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            // --- ▼ 新旧両方のデータ形式に対応するロジック ---
             const patientsData = snapshot.docs.map(doc => {
                 const data = doc.data();
                 let lastName = data.lastName || '';
@@ -228,12 +209,10 @@ const AdminPage = () => {
                 let name = '';
 
                 if (lastName || firstName) {
-                    // 新形式のデータがあれば、それを結合してnameを生成
                     name = `${lastName} ${firstName}`.trim();
                 } else if (data.name) {
-                    // 旧形式(nameのみ)のデータがあれば、それを元に姓・名を分割
                     name = data.name;
-                    const nameParts = data.name.split(/[\s　]+/); // 半角・全角スペースで分割
+                    const nameParts = data.name.split(/[\s　]+/);
                     lastName = nameParts[0] || '';
                     firstName = nameParts.slice(1).join(' ') || '';
                 }
@@ -241,38 +220,23 @@ const AdminPage = () => {
                 return { 
                     id: doc.id, 
                     ...data,
-                    name,      // 表示用の氏名
-                    lastName,  // フォーム編集用の姓
-                    firstName, // フォーム編集用の名
+                    name,
+                    lastName,
+                    firstName,
                 };
             });
-            // --- ここまで ---
             setMasterPatients(patientsData);
+            setLoadingMaster(false);
+        }, (err) => { // エラーハンドリングを追加
+            console.error("Master patient fetch error:", err);
             setLoadingMaster(false);
         });
         return () => unsubscribe();
     }, [selectedFacility]);
     
-    useEffect(() => {
-        if (!tokenizer || !isAutoFuriganaEnabled.current) return;
-
-        const { lastName, firstName } = masterFormData;
-        const fullName = `${lastName || ''}${firstName || ''}`;
-        
-        if (fullName) {
-            const tokens = tokenizer.tokenize(fullName);
-            const furigana = tokens.map(token => (token.reading && token.reading !== '*') ? token.reading : token.surface_form).join('');
-            setMasterFormData(prev => ({ ...prev, furigana }));
-        } else {
-            setMasterFormData(prev => ({ ...prev, furigana: '' }));
-        }
-    }, [masterFormData.lastName, masterFormData.firstName, tokenizer]);
-
-
     const handleOpenMasterModal = (patient = null) => {
         setEditingMasterPatient(patient);
         if (patient) {
-            // patientオブジェクトには上記のデータ変換ロジックで生成されたlastName, firstNameが含まれる
             setMasterFormData({ 
                 patientId: patient.patientId || '', 
                 lastName: patient.lastName || '',
@@ -285,17 +249,14 @@ const AdminPage = () => {
         } else {
             setMasterFormData(initialMasterFormData);
         }
-        isAutoFuriganaEnabled.current = true;
         setMasterModalOpen(true);
     };
     
     const handleCloseMasterModal = () => { setMasterModalOpen(false); setEditingMasterPatient(null); };
     
+    // シンプルなフォーム変更処理に戻す
     const handleMasterFormChange = (e) => {
         const { name, value } = e.target;
-        if (name === 'furigana') {
-            isAutoFuriganaEnabled.current = false;
-        }
         setMasterFormData(prev => ({ ...prev, [name]: value }));
     };
 
@@ -366,7 +327,7 @@ const AdminPage = () => {
                 batch.set(listDocRef, { createdAt: serverTimestamp(), facility: selectedFacility, date: selectedDate, cool: selectedCool });
                 masterSnapshot.forEach(patientDoc => {
                     const patientData = patientDoc.data();
-                    const patientName = `${patientData.lastName || ''} ${patientData.firstName || ''}`.trim() || patientData.name || ''; // 新旧どちらの形式にも対応
+                    const patientName = `${patientData.lastName || ''} ${patientData.firstName || ''}`.trim() || patientData.name || '';
                     const newDailyPatientDocRef = doc(dailyPatientsCollectionRef(selectedCool)); 
                     batch.set(newDailyPatientDocRef, { 
                         name: patientName, 
@@ -404,7 +365,6 @@ const AdminPage = () => {
         }
     };
     
-    // (return文以降のJSXは変更ありません)
     return (
         <div className="space-y-8">
             {masterModalOpen && <CustomModal title={editingMasterPatient ? "患者情報の編集" : "新規患者登録"} onClose={handleCloseMasterModal} footer={<><button onClick={handleCloseMasterModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleMasterSubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleMasterSubmit} className="space-y-4">
@@ -429,7 +389,7 @@ const AdminPage = () => {
                 
                 <div>
                     <label className="block font-medium mb-1">ふりがな (カタカナ)</label>
-                    <input type="text" name="furigana" value={masterFormData.furigana} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="自動入力されます" />
+                    <input type="text" name="furigana" value={masterFormData.furigana} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="手動で入力" />
                 </div>
             </form></CustomModal>}
 
