@@ -280,7 +280,6 @@ const AdminPage = () => {
     
     const handleCloseMasterModal = () => { setMasterModalOpen(false); };
     
-    // --- ▼ 手動編集モードのリセットロジックを追加 ---
     const handleMasterFormChange = (e) => {
         const { name, value } = e.target;
         setFormError('');
@@ -291,7 +290,6 @@ const AdminPage = () => {
             return;
         }
 
-        // 姓名が両方クリアされたら、手動モードを解除
         const isClearingName = (name === 'lastName' && value === '' && masterFormData.firstName === '') ||
                                (name === 'firstName' && value === '' && masterFormData.lastName === '');
         if (isClearingName) {
@@ -308,7 +306,6 @@ const AdminPage = () => {
             }
         }
     };
-    // --- ここまで ---
 
     const handleMasterSubmit = async (e) => { 
         e.preventDefault(); 
@@ -344,7 +341,6 @@ const AdminPage = () => {
 
     const handleCloseAddDailyModal = () => setAddDailyModalOpen(false);
 
-    // --- ▼ 手動編集モードのリセットロジックを追加 ---
     const handleDailyFormChange = (e) => {
         const { name, value } = e.target;
         setFormError('');
@@ -371,7 +367,6 @@ const AdminPage = () => {
             }
         }
     };
-    // --- ここまで ---
 
     const handleAddTempFromMaster = async (patient) => {
         try {
@@ -424,7 +419,6 @@ const AdminPage = () => {
         setEditingDailyPatient(null);
     };
 
-    // --- ▼ 手動編集モードのリセットロジックを追加 ---
     const handleEditDailyFormChange = (e) => {
         const { name, value } = e.target;
         setFormError('');
@@ -451,7 +445,6 @@ const AdminPage = () => {
             }
         }
     };
-    // --- ここまで ---
 
     const handleEditDailySubmit = async (e) => {
         e.preventDefault();
@@ -546,7 +539,29 @@ const AdminPage = () => {
             {addDailyModalOpen && <CustomModal title="臨時患者の追加" onClose={handleCloseAddDailyModal}>
                 <div className="border-b border-gray-200 mb-4"><nav className="-mb-px flex space-x-6" aria-label="Tabs"><button onClick={() => setDailyModalMode('search')} className={`${dailyModalMode === 'search' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>マスタから検索</button><button onClick={() => setDailyModalMode('manual')} className={`${dailyModalMode === 'manual' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>手動で新規登録</button></nav></div>
                 {formError && <p className="text-red-500 text-center font-bold mb-4 bg-red-100 p-3 rounded-lg">{formError}</p>}
-                {dailyModalMode === 'search' && (<div><input type="search" placeholder="患者ID, 氏名, ふりがな, ベッド番号で検索" value={tempPatientSearchTerm} onChange={(e) => setTempPatientSearchTerm(e.target.value)} className="w-full p-2 border rounded-md mb-4" /><div className="max-h-60 overflow-y-auto space-y-2">{masterPatients.filter(p => { const term = tempPatientSearchTerm.toLowerCase(); if (!term) return true; return (p.patientId && p.patientId.toLowerCase().includes(term)) || (p.name && p.name.toLowerCase().includes(term)) || (p.furigana && p.furigana.toLowerCase().includes(term)) || (p.bed && p.bed.toLowerCase().includes(term)); }).map(p => (<div key={p.id} className="flex justify-between items-center p-2 border rounded-md"><div><p className="font-semibold">{p.name}</p><p className="text-sm text-gray-500">ベッド: {p.bed}</p></div><button onClick={() => handleAddTempFromMaster(p)} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded-md text-sm">追加</button></div>))}</div></div>)}
+                {dailyModalMode === 'search' && (
+                    <div>
+                        <input type="search" placeholder="患者ID, 氏名, ふりがな, ベッド番号で検索" value={tempPatientSearchTerm} onChange={(e) => setTempPatientSearchTerm(e.target.value)} className="w-full p-2 border rounded-md mb-4" />
+                        <div className="max-h-60 overflow-y-auto space-y-2">
+                            {masterPatients.filter(p => {
+                                const term = tempPatientSearchTerm.toLowerCase();
+                                if (!term) return true;
+                                return (p.patientId && p.patientId.toLowerCase().includes(term)) || 
+                                       (p.name && p.name.toLowerCase().includes(term)) || 
+                                       (p.furigana && p.furigana.toLowerCase().includes(term)) || 
+                                       (p.bed && p.bed.toLowerCase().includes(term));
+                            }).map(p => (
+                                <div key={p.id} className="flex justify-between items-center p-2 border rounded-md">
+                                    <div>
+                                        <p className="font-semibold">{p.name}</p>
+                                        <p className="text-sm text-gray-500">ベッド: {p.bed}</p>
+                                    </div>
+                                    <button onClick={() => handleAddTempFromMaster(p)} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded-md text-sm">追加</button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
                 {dailyModalMode === 'manual' && (<form onSubmit={handleAddDailySubmit} className="space-y-4"><div><label className="block font-medium mb-1">ベッド番号<RequiredBadge /></label><input type="text" name="bed" value={dailyFormData.bed} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /></div><div className="grid grid-cols-2 gap-4"><div><label className="block font-medium mb-1">姓<RequiredBadge /></label><input type="text" name="lastName" value={dailyFormData.lastName} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" placeholder="例：りんじ" required /></div><div><label className="block font-medium mb-1">名<RequiredBadge /></label><input type="text" name="firstName" value={dailyFormData.firstName} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" placeholder="例：たろう" required /></div></div><div><label className="block font-medium mb-1">ふりがな (ひらがな)</label><input type="text" name="furigana" value={dailyFormData.furigana} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" placeholder="自動入力されます"/></div><div className="flex justify-end pt-4"><button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">登録</button></div></form>)}
             </CustomModal>}
             
