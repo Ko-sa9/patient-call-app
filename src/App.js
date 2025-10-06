@@ -671,7 +671,11 @@ const StaffPage = () => {
 const QrScannerModal = ({ onClose, onScanSuccess }) => {
     const [scanResult, setScanResult] = useState(null);
     
-    // 連続スキャンを制御するためのフラグ
+    // --- カメラ切り替え機能のために追加 ---
+    const [cameras, setCameras] = useState([]); // 利用可能なカメラのリスト
+    const [selectedCameraId, setSelectedCameraId] = useState(''); // 選択中のカメラID
+    // --- ここまで ---
+    
     const isProcessingRef = useRef(false);
     
     const onScanSuccessRef = useRef(onScanSuccess);
@@ -679,58 +683,89 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
         onScanSuccessRef.current = onScanSuccess;
     }, [onScanSuccess]);
 
+    // ▼ コンポーネント表示時に一度だけ、利用可能なカメラを取得する
     useEffect(() => {
-        // UIなしのQRコードリーダーのインスタンスを生成
+        Html5Qrcode.getCameras().then(devices => {
+            if (devices && devices.length) {
+                setCameras(devices);
+                // 優先的に背面カメラ(environment)を選択、なければ最初のカメラを選択
+                const backCamera = devices.find(device => device.label.toLowerCase().includes('back')) || devices[0];
+                setSelectedCameraId(backCamera.id);
+            }
+        }).catch(err => {
+            console.error("カメラの取得に失敗しました。", err);
+        });
+    }, []);
+
+    // ▼ 選択されたカメラIDが変わるたびに、スキャナを再起動する
+    useEffect(() => {
+        // 選択されたカメラがない場合は何もしない
+        if (!selectedCameraId) {
+            return;
+        }
+
         const html5QrCode = new Html5Qrcode('qr-reader-container');
         
-        // スキャン成功時のコールバック関数
         const qrCodeSuccessCallback = (decodedText, decodedResult) => {
-            // 処理中の場合は何もしない
-            if (isProcessingRef.current) {
-                return;
-            }
-            // 処理中フラグを立てる
+            if (isProcessingRef.current) return;
             isProcessingRef.current = true;
-
-            // 親コンポーネントの関数を呼び出してメインの処理を実行
             const result = onScanSuccessRef.current(decodedText);
-            setScanResult(result); // 結果メッセージを表示
-
-            // 0.5秒後に処理中フラグを解除
+            setScanResult(result);
             setTimeout(() => {
                 isProcessingRef.current = false;
-            }, 1000);
+            }, 1000); // 1秒間は再スキャンしない
         };
 
         const config = { fps: 10, qrbox: { width: 250, height: 250 } };
 
-        // モーダルが表示されたら、カメラを起動する
         html5QrCode.start(
-            { facingMode: "environment" }, // 背面カメラを使用
+            selectedCameraId, // 選択されたカメラIDを使用
             config,
             qrCodeSuccessCallback,
-            undefined // エラーコールバックは今回は未使用
+            undefined
         ).catch(err => {
-            console.error("Unable to start scanning.", err);
-            // カメラの起動に失敗した場合のメッセージを表示
-            setScanResult({ success: false, message: "カメラの起動に失敗しました。ブラウザの許可設定などを確認してください。" });
+            console.error("スキャンの開始に失敗しました。", err);
+            setScanResult({ success: false, message: "カメラの起動に失敗しました。" });
         });
 
-        // コンポーネントが非表示になる（モーダルが閉じる）時に実行されるクリーンアップ処理
+        // モーダルが閉じる時、またはカメラが切り替わる時にスキャナを停止
         return () => {
-            // カメラが起動中であれば停止する
             if (html5QrCode && html5QrCode.isScanning) {
                 html5QrCode.stop().catch(err => {
-                    console.error("Failed to stop QR Code scanning.", err);
+                    console.error("スキャナの停止に失敗しました。", err);
                 });
             }
         };
-    }, []); // 依存配列を空にして、初回表示時に一度だけ実行
+    }, [selectedCameraId]); // selectedCameraIdが変更されたらこのuseEffectを再実行
+
+    // --- カメラ切り替えボタンの処理 ---
+    const handleCameraSwitch = () => {
+        if (cameras.length < 2) return; // カメラが2つ未満なら何もしない
+        const currentIndex = cameras.findIndex(c => c.id === selectedCameraId);
+        const nextIndex = (currentIndex + 1) % cameras.length;
+        setSelectedCameraId(cameras[nextIndex].id);
+    };
 
     return (
         <CustomModal title="QRコードで呼び出し" onClose={onClose} footer={<button onClick={onClose} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">閉じる</button>}>
-            {/* このdivにカメラ映像が描画される */}
-            <div id="qr-reader-container" className="w-full"></div>
+            <div id="qr-reader-container" className="w-full relative"></div>
+            
+            {/* --- カメラ切り替えボタンのUI --- */}
+            {cameras.length > 1 && (
+                <div className="text-center mt-3">
+                    <button 
+                        onClick={handleCameraSwitch} 
+                        className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition inline-flex items-center"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" />
+                        </svg>
+                        カメラ切替
+                    </button>
+                </div>
+            )}
+            {/* --- ここまで --- */}
+            
             {scanResult && (
                 <div className={`mt-4 p-3 rounded text-center font-semibold ${scanResult.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                     {scanResult.message}
