@@ -202,8 +202,9 @@ const AdminPage = () => {
     
     const [editDailyModalOpen, setEditDailyModalOpen] = useState(false);
     const [editingDailyPatient, setEditingDailyPatient] = useState(null);
-    const [editDailyFormData, setEditDailyFormData] = useState({ name: '', furigana: '', bed: '' });
-    // --- ▼ 編集モーダル用のふりがな手動編集フラグ ---
+    // --- ▼ 編集モーダルの state を lastName, firstName に変更 ---
+    const [editDailyFormData, setEditDailyFormData] = useState({ lastName: '', firstName: '', furigana: '', bed: '' });
+    const [editFuriganaParts, setEditFuriganaParts] = useState({ last: '', first: '' });
     const isEditFuriganaManual = useRef(false);
     // --- ここまで ---
 
@@ -253,6 +254,13 @@ const AdminPage = () => {
         const combinedFurigana = [dailyFuriganaParts.last, dailyFuriganaParts.first].filter(Boolean).join(' ');
         setDailyFormData(prev => ({ ...prev, furigana: combinedFurigana }));
     }, [dailyFuriganaParts]);
+    
+    // --- ▼ 編集モーダル用のふりがな結合ロジックを追加 ---
+    useEffect(() => {
+        if (isEditFuriganaManual.current) return;
+        const combinedFurigana = [editFuriganaParts.last, editFuriganaParts.first].filter(Boolean).join(' ');
+        setEditDailyFormData(prev => ({ ...prev, furigana: combinedFurigana }));
+    }, [editFuriganaParts]);
 
     const handleOpenMasterModal = (patient = null) => {
         setEditingMasterPatient(patient);
@@ -378,10 +386,21 @@ const AdminPage = () => {
         }
     };
     
+    // --- ▼ 編集モーダルのロジックを全面的に修正 ---
     const handleOpenEditDailyModal = (patient) => {
+        const nameParts = (patient.name || '').split(/[\s　]+/);
+        const lastName = nameParts[0] || '';
+        const firstName = nameParts.slice(1).join(' ') || '';
+
         setEditingDailyPatient(patient);
-        setEditDailyFormData({ name: patient.name, furigana: patient.furigana || '', bed: patient.bed });
-        isEditFuriganaManual.current = !patient.furigana; // ふりがながあれば手動モード
+        setEditDailyFormData({ 
+            lastName: lastName,
+            firstName: firstName,
+            furigana: patient.furigana || '', 
+            bed: patient.bed 
+        });
+        setEditFuriganaParts({ last: '', first: '' });
+        isEditFuriganaManual.current = !!patient.furigana;
         setFormError('');
         setEditDailyModalOpen(true);
     };
@@ -391,7 +410,6 @@ const AdminPage = () => {
         setEditingDailyPatient(null);
     };
 
-    // --- ▼ 編集モーダルの入力処理を修正 ---
     const handleEditDailyFormChange = (e) => {
         const { name, value } = e.target;
         setFormError('');
@@ -402,26 +420,20 @@ const AdminPage = () => {
             return;
         }
 
-        if (name === 'name') {
-            setEditDailyFormData(prev => {
-                const newState = { ...prev, name: value };
-                // 手動編集モードでなく、入力がひらがな／カタカナの場合
-                if (!isEditFuriganaManual.current && wanakana.isKana(value)) {
-                    newState.furigana = wanakana.toHiragana(value); // ふりがなをひらがなで更新
-                }
-                return newState;
-            });
-            return;
-        }
-        
-        // ベッド番号など他のフィールド用
         setEditDailyFormData(prev => ({ ...prev, [name]: value }));
+
+        if (!isEditFuriganaManual.current) {
+            if (name === 'lastName') {
+                if (wanakana.isKana(value)) { setEditFuriganaParts(prev => ({ ...prev, last: wanakana.toHiragana(value) })); }
+            } else if (name === 'firstName') {
+                if (wanakana.isKana(value)) { setEditFuriganaParts(prev => ({ ...prev, first: wanakana.toHiragana(value) })); }
+            }
+        }
     };
-    // --- ここまで ---
 
     const handleEditDailySubmit = async (e) => {
         e.preventDefault();
-        if (!editDailyFormData.name || !editDailyFormData.bed) {
+        if (!editDailyFormData.lastName || !editDailyFormData.firstName || !editDailyFormData.bed) {
             setFormError('必須項目をすべて入力してください。');
             return;
         }
@@ -430,7 +442,7 @@ const AdminPage = () => {
         try {
             const docRef = doc(dailyPatientsCollectionRef(selectedCool), editingDailyPatient.id);
             await updateDoc(docRef, {
-                name: editDailyFormData.name,
+                name: `${editDailyFormData.lastName} ${editDailyFormData.firstName}`.trim(),
                 furigana: editDailyFormData.furigana,
                 bed: editDailyFormData.bed,
                 updatedAt: serverTimestamp(),
@@ -441,6 +453,7 @@ const AdminPage = () => {
             setFormError('更新中にエラーが発生しました。');
         }
     };
+    // --- ここまで ---
 
     const handleDeleteMasterClick = (patientId) => setConfirmMasterDelete({ isOpen: true, patientId });
     const handleConfirmMasterDelete = async () => { if (confirmMasterDelete.patientId) { try { await deleteDoc(doc(masterPatientsCollectionRef, confirmMasterDelete.patientId)); } catch (error) { console.error("Error deleting master patient:", error); } setConfirmMasterDelete({ isOpen: false, patientId: null }); } };
@@ -516,10 +529,14 @@ const AdminPage = () => {
                 {dailyModalMode === 'manual' && (<form onSubmit={handleAddDailySubmit} className="space-y-4"><div><label className="block font-medium mb-1">ベッド番号<RequiredBadge /></label><input type="text" name="bed" value={dailyFormData.bed} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /></div><div className="grid grid-cols-2 gap-4"><div><label className="block font-medium mb-1">姓<RequiredBadge /></label><input type="text" name="lastName" value={dailyFormData.lastName} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" placeholder="例：りんじ" required /></div><div><label className="block font-medium mb-1">名<RequiredBadge /></label><input type="text" name="firstName" value={dailyFormData.firstName} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" placeholder="例：たろう" required /></div></div><div><label className="block font-medium mb-1">ふりがな (ひらがな)</label><input type="text" name="furigana" value={dailyFormData.furigana} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" placeholder="自動入力されます"/></div><div className="flex justify-end pt-4"><button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">登録</button></div></form>)}
             </CustomModal>}
             
+            {/* --- ▼ 編集モーダルのフォームを lastName, firstName に変更 --- */}
             {editDailyModalOpen && <CustomModal title="リスト情報の編集" onClose={handleCloseEditDailyModal} footer={<><button onClick={handleCloseEditDailyModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleEditDailySubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}>
                 <form onSubmit={handleEditDailySubmit} className="space-y-4">
                     {formError && <p className="text-red-500 text-center font-bold mb-4 bg-red-100 p-3 rounded-lg">{formError}</p>}
-                    <div><label className="block font-medium mb-1">氏名<RequiredBadge /></label><input type="text" name="name" value={editDailyFormData.name} onChange={handleEditDailyFormChange} className="w-full p-2 border rounded-md" required /></div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div><label className="block font-medium mb-1">姓<RequiredBadge /></label><input type="text" name="lastName" value={editDailyFormData.lastName} onChange={handleEditDailyFormChange} className="w-full p-2 border rounded-md" required /></div>
+                        <div><label className="block font-medium mb-1">名<RequiredBadge /></label><input type="text" name="firstName" value={editDailyFormData.firstName} onChange={handleEditDailyFormChange} className="w-full p-2 border rounded-md" required /></div>
+                    </div>
                     <div><label className="block font-medium mb-1">ふりがな (ひらがな)</label><input type="text" name="furigana" value={editDailyFormData.furigana} onChange={handleEditDailyFormChange} className="w-full p-2 border rounded-md" /></div>
                     <div><label className="block font-medium mb-1">ベッド番号<RequiredBadge /></label><input type="text" name="bed" value={editDailyFormData.bed} onChange={handleEditDailyFormChange} className="w-full p-2 border rounded-md" required /></div>
                 </form>
@@ -546,7 +563,6 @@ const AdminPage = () => {
                             <tr><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">操作</th><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">状態</th><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">ベッド番号</th><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">氏名</th><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">ふりがな</th></tr>
                         </thead>
                         <tbody>
-                            {/* --- ▼ 並び替えロジックを修正 --- */}
                             {dailyList.slice().sort((a, b) => {
                                 const isAExited = a.status === '退出済';
                                 const isBExited = b.status === '退出済';
