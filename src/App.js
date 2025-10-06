@@ -186,8 +186,11 @@ const AdminPage = () => {
     const [masterFormData, setMasterFormData] = useState(initialMasterFormData);
     
     const [furiganaParts, setFuriganaParts] = useState({ last: '', first: '' });
-    
     const isFuriganaManuallyEdited = useRef(false);
+    
+    // --- ▼ エラーメッセージ表示用の state を追加 ---
+    const [formError, setFormError] = useState('');
+    // --- ここまで ---
     
     const [masterSearchTerm, setMasterSearchTerm] = useState('');
     
@@ -239,13 +242,11 @@ const AdminPage = () => {
         return () => unsubscribe();
     }, [selectedFacility]);
     
-    // --- ▼ ふりがな結合ロジックを修正 ---
     useEffect(() => {
         if (isFuriganaManuallyEdited.current) return;
         
-        // 姓と名のふりがなを、空でない方だけ選んで半角スペースで結合
         const combinedFurigana = [furiganaParts.last, furiganaParts.first]
-            .filter(Boolean) // これで空の文字列が除去される
+            .filter(Boolean)
             .join(' ');
 
         setMasterFormData(prev => ({
@@ -253,11 +254,11 @@ const AdminPage = () => {
             furigana: combinedFurigana,
         }));
     }, [furiganaParts]);
-    // --- ここまで ---
 
     const handleOpenMasterModal = (patient = null) => {
         setEditingMasterPatient(patient);
         isFuriganaManuallyEdited.current = false;
+        setFormError(''); // --- ▼ モーダルを開くときにエラーをリセット ---
 
         if (patient) {
             setMasterFormData({ 
@@ -285,6 +286,7 @@ const AdminPage = () => {
     
     const handleMasterFormChange = (e) => {
         const { name, value } = e.target;
+        setFormError(''); // --- ▼ 何か入力されたらエラーを消す ---
 
         if (name === 'furigana') {
             isFuriganaManuallyEdited.current = true;
@@ -309,7 +311,13 @@ const AdminPage = () => {
 
     const handleMasterSubmit = async (e) => { 
         e.preventDefault(); 
-        if (!masterFormData.lastName || !masterFormData.firstName || !masterFormData.bed || !masterFormData.patientId) return; 
+
+        // --- ▼ 入力チェックとエラー表示 ---
+        if (!masterFormData.lastName || !masterFormData.firstName || !masterFormData.bed || !masterFormData.patientId) {
+            setFormError('必須項目をすべて入力してください。');
+            return; 
+        }
+        // --- ここまで ---
         
         const dataToSave = {
             patientId: masterFormData.patientId,
@@ -331,6 +339,7 @@ const AdminPage = () => {
             handleCloseMasterModal(); 
         } catch (error) { 
             console.error("Error saving master patient:", error); 
+            setFormError('保存中にエラーが発生しました。');
         } 
     };
 
@@ -415,6 +424,9 @@ const AdminPage = () => {
     return (
         <div className="space-y-8">
             {masterModalOpen && <CustomModal title={editingMasterPatient ? "患者情報の編集" : "新規患者登録"} onClose={handleCloseMasterModal} footer={<><button onClick={handleCloseMasterModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleMasterSubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleMasterSubmit} className="space-y-4">
+                {/* --- ▼ エラーメッセージ表示部分 --- */}
+                {formError && <p className="text-red-500 text-center font-bold mb-4 bg-red-100 p-3 rounded-lg">{formError}</p>}
+                {/* --- ここまで --- */}
                 <div>
                     <label className="block font-medium mb-1">患者ID (QRコード用)</label>
                     <input type="text" name="patientId" value={masterFormData.patientId} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="電子カルテIDなどを入力" required />
