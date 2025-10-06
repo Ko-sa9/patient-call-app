@@ -173,6 +173,10 @@ const StatusBadge = ({ status }) => {
 // --- Page Components ---
 
 // --- 1. Admin Page ---
+// --- ▼ 新しく「必須」バッジのコンポーネントを追加 ---
+const RequiredBadge = () => <span className="ml-2 bg-red-500 text-white text-xs font-semibold px-2 py-0.5 rounded-full">必須</span>;
+// --- ここまで ---
+
 const AdminPage = () => {
     const { selectedFacility, selectedDate, selectedCool } = useContext(AppContext);
     const { dailyList, loading: loadingDaily } = useDailyList();
@@ -188,9 +192,7 @@ const AdminPage = () => {
     const [furiganaParts, setFuriganaParts] = useState({ last: '', first: '' });
     const isFuriganaManuallyEdited = useRef(false);
     
-    // --- ▼ エラーメッセージ表示用の state を追加 ---
     const [formError, setFormError] = useState('');
-    // --- ここまで ---
     
     const [masterSearchTerm, setMasterSearchTerm] = useState('');
     
@@ -258,7 +260,7 @@ const AdminPage = () => {
     const handleOpenMasterModal = (patient = null) => {
         setEditingMasterPatient(patient);
         isFuriganaManuallyEdited.current = false;
-        setFormError(''); // --- ▼ モーダルを開くときにエラーをリセット ---
+        setFormError('');
 
         if (patient) {
             setMasterFormData({ 
@@ -286,7 +288,7 @@ const AdminPage = () => {
     
     const handleMasterFormChange = (e) => {
         const { name, value } = e.target;
-        setFormError(''); // --- ▼ 何か入力されたらエラーを消す ---
+        setFormError('');
 
         if (name === 'furigana') {
             isFuriganaManuallyEdited.current = true;
@@ -312,12 +314,10 @@ const AdminPage = () => {
     const handleMasterSubmit = async (e) => { 
         e.preventDefault(); 
 
-        // --- ▼ 入力チェックとエラー表示 ---
         if (!masterFormData.lastName || !masterFormData.firstName || !masterFormData.bed || !masterFormData.patientId) {
             setFormError('必須項目をすべて入力してください。');
             return; 
         }
-        // --- ここまで ---
         
         const dataToSave = {
             patientId: masterFormData.patientId,
@@ -424,24 +424,33 @@ const AdminPage = () => {
     return (
         <div className="space-y-8">
             {masterModalOpen && <CustomModal title={editingMasterPatient ? "患者情報の編集" : "新規患者登録"} onClose={handleCloseMasterModal} footer={<><button onClick={handleCloseMasterModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleMasterSubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleMasterSubmit} className="space-y-4">
-                {/* --- ▼ エラーメッセージ表示部分 --- */}
                 {formError && <p className="text-red-500 text-center font-bold mb-4 bg-red-100 p-3 rounded-lg">{formError}</p>}
-                {/* --- ここまで --- */}
+                
+                {/* --- ▼ 必須項目にバッジを追加 --- */}
                 <div>
-                    <label className="block font-medium mb-1">患者ID (QRコード用)</label>
+                    <label className="block font-medium mb-1">患者ID (QRコード用)<RequiredBadge /></label>
                     <input type="text" name="patientId" value={masterFormData.patientId} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="電子カルテIDなどを入力" required />
                 </div>
-                <div><label className="block font-medium mb-1">曜日</label><select name="day" value={masterFormData.day} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="月水金">月水金</option><option value="火木土">火木土</option></select></div>
-                <div><label className="block font-medium mb-1">クール</label><select name="cool" value={masterFormData.cool} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
-                <div><label className="block font-medium mb-1">ベッド番号</label><input type="text" name="bed" value={masterFormData.bed} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" required /></div>
+                <div>
+                    <label className="block font-medium mb-1">曜日</label>
+                    <select name="day" value={masterFormData.day} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="月水金">月水金</option><option value="火木土">火木土</option></select>
+                </div>
+                <div>
+                    <label className="block font-medium mb-1">クール</label>
+                    <select name="cool" value={masterFormData.cool} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+                </div>
+                <div>
+                    <label className="block font-medium mb-1">ベッド番号<RequiredBadge /></label>
+                    <input type="text" name="bed" value={masterFormData.bed} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" required />
+                </div>
                 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label className="block font-medium mb-1">姓</label>
+                        <label className="block font-medium mb-1">姓<RequiredBadge /></label>
                         <input type="text" name="lastName" value={masterFormData.lastName} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="例：やまだ" required />
                     </div>
                     <div>
-                        <label className="block font-medium mb-1">名</label>
+                        <label className="block font-medium mb-1">名<RequiredBadge /></label>
                         <input type="text" name="firstName" value={masterFormData.firstName} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="例：たろう" required />
                     </div>
                 </div>
@@ -457,6 +466,7 @@ const AdminPage = () => {
                         placeholder="自動入力されます"
                     />
                 </div>
+                {/* --- ここまで --- */}
             </form></CustomModal>}
 
             {/* ( dailyModalOpen以降のJSXは変更ありません ) */}
