@@ -194,6 +194,12 @@ const AdminPage = () => {
     const [confirmDailyDelete, setConfirmDailyDelete] = useState({ isOpen: false, patientId: null });
     const [confirmLoadModal, setConfirmLoadModal] = useState({isOpen: false, onConfirm: () => {}});
     const [confirmClearListModal, setConfirmClearListModal] = useState({ isOpen: false });
+    
+    // --- ▼ ふりがな自動入力のための state と ref ---
+    const { httpsCallable } = require('firebase/functions');
+    const isAutoFuriganaEnabled = useRef(true);
+    const [isConverting, setIsConverting] = useState(false); // 変換中フラグ
+    // --- ここまで ---
 
     const masterPatientsCollectionRef = collection(db, 'patients');
     const dailyPatientsCollectionRef = (cool) => collection(db, 'daily_lists', `${selectedDate}_${selectedFacility}_${cool}`, 'patients');
@@ -227,13 +233,46 @@ const AdminPage = () => {
             });
             setMasterPatients(patientsData);
             setLoadingMaster(false);
-        }, (err) => { // エラーハンドリングを追加
+        }, (err) => {
             console.error("Master patient fetch error:", err);
             setLoadingMaster(false);
         });
         return () => unsubscribe();
     }, [selectedFacility]);
     
+    // --- ▼ ふりがな自動入力のロジック（Cloud Functions呼び出し） ---
+    useEffect(() => {
+        if (!isAutoFuriganaEnabled.current) return;
+        
+        const fullName = `${masterFormData.lastName || ''}${masterFormData.firstName || ''}`.trim();
+        if (!fullName) {
+            setMasterFormData(prev => ({ ...prev, furigana: '' }));
+            return;
+        }
+
+        // debounce処理: 500ミリ秒入力がなければAPIを叩く
+        const timerId = setTimeout(() => {
+            setIsConverting(true); // 変換開始
+            const getFurigana = httpsCallable(functions, 'getFurigana');
+            getFurigana({ text: fullName })
+                .then((result) => {
+                    if (isAutoFuriganaEnabled.current) {
+                        setMasterFormData(prev => ({ ...prev, furigana: result.data.furigana }));
+                    }
+                })
+                .catch((error) => {
+                    console.error("ふりがな変換エラー:", error);
+                })
+                .finally(() => {
+                    setIsConverting(false); // 変換終了
+                });
+        }, 500);
+
+        return () => clearTimeout(timerId);
+
+    }, [masterFormData.lastName, masterFormData.firstName]);
+
+
     const handleOpenMasterModal = (patient = null) => {
         setEditingMasterPatient(patient);
         if (patient) {
@@ -249,14 +288,17 @@ const AdminPage = () => {
         } else {
             setMasterFormData(initialMasterFormData);
         }
+        isAutoFuriganaEnabled.current = true;
         setMasterModalOpen(true);
     };
     
     const handleCloseMasterModal = () => { setMasterModalOpen(false); setEditingMasterPatient(null); };
     
-    // シンプルなフォーム変更処理に戻す
     const handleMasterFormChange = (e) => {
         const { name, value } = e.target;
+        if (name === 'furigana') {
+            isAutoFuriganaEnabled.current = false;
+        }
         setMasterFormData(prev => ({ ...prev, [name]: value }));
     };
 
@@ -287,7 +329,6 @@ const AdminPage = () => {
         } 
     };
 
-    // (handleDeleteMasterClick 以降の関数は変更ありません)
     const handleDeleteMasterClick = (patientId) => setConfirmMasterDelete({ isOpen: true, patientId });
     const handleConfirmMasterDelete = async () => { if (confirmMasterDelete.patientId) { try { await deleteDoc(doc(masterPatientsCollectionRef, confirmMasterDelete.patientId)); } catch (error) { console.error("Error deleting master patient:", error); } setConfirmMasterDelete({ isOpen: false, patientId: null }); } };
     const handleOpenDailyModal = (patient = null) => {
@@ -389,7 +430,17 @@ const AdminPage = () => {
                 
                 <div>
                     <label className="block font-medium mb-1">ふりがな (カタカナ)</label>
-                    <input type="text" name="furigana" value={masterFormData.furigana} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="手動で入力" />
+                    <div className="relative">
+                        <input 
+                            type="text" 
+                            name="furigana" 
+                            value={masterFormData.furigana} 
+                            onChange={handleMasterFormChange} 
+                            className="w-full p-2 border rounded-md" 
+                            placeholder={isConverting ? "変換中..." : "自動入力されます"} 
+                        />
+                        {isConverting && <div className="absolute top-1/2 right-3 -translate-y-1/2 animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500"></div>}
+                    </div>
                 </div>
             </form></CustomModal>}
 
@@ -398,7 +449,6 @@ const AdminPage = () => {
             {confirmDailyDelete.isOpen && <ConfirmationModal title="リストから削除" message="この患者を本日のリストから削除しますか？マスタ登録は残ります。" onConfirm={handleConfirmDailyDelete} onCancel={() => setConfirmDailyDelete({ isOpen: false, patientId: null })} confirmText="削除" confirmColor="red" />}
             {confirmLoadModal.isOpen && <ConfirmationModal title="読み込みの確認" message="既にリストが存在します。上書きしてマスタから再読み込みしますか？" onConfirm={confirmLoadModal.onConfirm} onCancel={() => setConfirmLoadModal({ isOpen: false, onConfirm: () => {} })} confirmText="再読み込み" confirmColor="blue" />}
             {confirmClearListModal.isOpen && <ConfirmationModal title="リストの一括削除" message={`【${selectedFacility} | ${selectedDate} | ${selectedCool}クール】のリストを完全に削除します。よろしいですか？`} onConfirm={handleClearDailyList} onCancel={() => setConfirmClearListModal({ isOpen: false })} confirmText="一括削除" confirmColor="red" />}
-
             <div className="bg-white p-6 rounded-lg shadow-md">
                 <h3 className="text-xl font-semibold text-gray-800 border-b pb-3 mb-4">本日の呼び出しリスト作成</h3>
                 <p className="text-gray-600 mb-4">グローバル設定（画面上部）で施設・日付・クールを選択し、下のボタンで対象患者を読み込みます。</p>
@@ -412,7 +462,7 @@ const AdminPage = () => {
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
                         </button>
                         <button title="リストから全削除" onClick={() => setConfirmClearListModal({ isOpen: true })} disabled={dailyList.length === 0} className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 rounded-lg transition disabled:bg-red-300 disabled:cursor-not-allowed text-sm">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 O 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                         </button>
                     </div>
                  </div>
