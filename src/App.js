@@ -185,6 +185,10 @@ const AdminPage = () => {
     const initialMasterFormData = { patientId: '', lastName: '', firstName: '', furigana: '', bed: '', day: '月水金', cool: '1' };
     const [masterFormData, setMasterFormData] = useState(initialMasterFormData);
     
+    // --- ▼ ふりがなを姓・名で内部的に管理するためのState ---
+    const [furiganaParts, setFuriganaParts] = useState({ last: '', first: '' });
+    // --- ここまで ---
+    
     const [masterSearchTerm, setMasterSearchTerm] = useState('');
     
     const [dailyModalOpen, setDailyModalOpen] = useState(false);
@@ -235,6 +239,14 @@ const AdminPage = () => {
         return () => unsubscribe();
     }, [selectedFacility]);
     
+    // --- ▼ ふりがなパーツが変更されたら、メインのfurigana stateを更新 ---
+    useEffect(() => {
+        setMasterFormData(prev => ({
+            ...prev,
+            furigana: `${furiganaParts.last}${furiganaParts.first}`
+        }));
+    }, [furiganaParts]);
+    // --- ここまで ---
 
     const handleOpenMasterModal = (patient = null) => {
         setEditingMasterPatient(patient);
@@ -248,33 +260,38 @@ const AdminPage = () => {
                 day: patient.day, 
                 cool: patient.cool 
             });
+            // 編集時は、既存のふりがなから姓・名を推測（簡易的）
+            // ここではシンプルにリセットし、再入力を促す仕様とします
+            setFuriganaParts({ last: '', first: '' });
+
         } else {
             setMasterFormData(initialMasterFormData);
+            setFuriganaParts({ last: '', first: '' });
         }
         setMasterModalOpen(true);
     };
     
     const handleCloseMasterModal = () => { setMasterModalOpen(false); setEditingMasterPatient(null); };
     
-    // ▼ ふりがな自動入力のロジックをこちらに変更
+    // --- ▼ 新しいふりがな自動入力のロジック ---
     const handleMasterFormChange = (e) => {
         const { name, value } = e.target;
 
-        setMasterFormData(prev => {
-            const newState = { ...prev, [name]: value };
+        // まず、入力された値でメインの state を更新
+        setMasterFormData(prev => ({ ...prev, [name]: value }));
 
-            // 姓または名の入力欄が変更された場合
-            if (name === 'lastName' || name === 'firstName') {
-                const combinedFurigana = `${newState.lastName || ''}${newState.firstName || ''}`;
-                
-                // 入力がひらがなの場合のみ、ふりがな（カタカナ）を更新
-                if (wanakana.isHiragana(combinedFurigana)) {
-                    newState.furigana = wanakana.toKatakana(combinedFurigana);
-                }
+        // 次に、入力欄に応じてふりがなパーツを更新
+        if (name === 'lastName') {
+            if (wanakana.isHiragana(value)) {
+                setFuriganaParts(prev => ({ ...prev, last: wanakana.toKatakana(value) }));
             }
-            return newState;
-        });
+        } else if (name === 'firstName') {
+            if (wanakana.isHiragana(value)) {
+                setFuriganaParts(prev => ({ ...prev, first: wanakana.toKatakana(value) }));
+            }
+        }
     };
+    // --- ここまで ---
 
     const handleMasterSubmit = async (e) => { 
         e.preventDefault(); 
@@ -284,7 +301,7 @@ const AdminPage = () => {
             patientId: masterFormData.patientId,
             lastName: masterFormData.lastName,
             firstName: masterFormData.firstName,
-            furigana: masterFormData.furigana,
+            furigana: masterFormData.furigana, // 結合済みのふりがなを保存
             bed: masterFormData.bed,
             day: masterFormData.day,
             cool: masterFormData.cool,
@@ -412,12 +429,12 @@ const AdminPage = () => {
                         onChange={handleMasterFormChange} 
                         className="w-full p-2 border rounded-md bg-gray-100" 
                         placeholder="自動入力されます"
-                        readOnly // 手動編集を不可にする
+                        readOnly 
                     />
                 </div>
             </form></CustomModal>}
 
-            {/* ( dailyModalOpen以降のJSXは変更なし ) */}
+            {/* ( dailyModalOpen以降のJSXは変更ありません ) */}
             {dailyModalOpen && <CustomModal title={editingDailyPatient ? "臨時情報の編集" : "臨時患者の追加"} onClose={handleCloseDailyModal} footer={<><button onClick={handleCloseDailyModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleDailySubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleDailySubmit} className="space-y-4"><div><label className="block font-medium mb-1">ベッド番号</label><input type="text" name="bed" value={dailyFormData.bed} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /></div><div><label className="block font-medium mb-1">氏名</label><input type="text" name="name" value={dailyFormData.name} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /></div><div><label className="block font-medium mb-1">ふりがな</label><input type="text" name="furigana" value={dailyFormData.furigana} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" placeholder="例：りんじ たろう"/></div></form></CustomModal>}
             {confirmMasterDelete.isOpen && <ConfirmationModal title="マスタから削除" message="この患者情報をマスタから完全に削除しますか？" onConfirm={handleConfirmMasterDelete} onCancel={() => setConfirmMasterDelete({ isOpen: false, patientId: null })} confirmText="削除" confirmColor="red" />}
             {confirmDailyDelete.isOpen && <ConfirmationModal title="リストから削除" message="この患者を本日のリストから削除しますか？マスタ登録は残ります。" onConfirm={handleConfirmDailyDelete} onCancel={() => setConfirmDailyDelete({ isOpen: false, patientId: null })} confirmText="削除" confirmColor="red" />}
