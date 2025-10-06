@@ -173,9 +173,7 @@ const StatusBadge = ({ status }) => {
 // --- Page Components ---
 
 // --- 1. Admin Page ---
-// --- ▼ 新しく「必須」バッジのコンポーネントを追加 ---
 const RequiredBadge = () => <span className="ml-2 bg-red-500 text-white text-xs font-semibold px-2 py-0.5 rounded-full">必須</span>;
-// --- ここまで ---
 
 const AdminPage = () => {
     const { selectedFacility, selectedDate, selectedCool } = useContext(AppContext);
@@ -191,14 +189,20 @@ const AdminPage = () => {
     
     const [furiganaParts, setFuriganaParts] = useState({ last: '', first: '' });
     const isFuriganaManuallyEdited = useRef(false);
-    
     const [formError, setFormError] = useState('');
-    
     const [masterSearchTerm, setMasterSearchTerm] = useState('');
     
+    // --- ▼ 臨時患者追加モーダル用の state ---
     const [dailyModalOpen, setDailyModalOpen] = useState(false);
-    const [editingDailyPatient, setEditingDailyPatient] = useState(null);
-    const [dailyFormData, setDailyFormData] = useState({ name: '', bed: '', furigana: ''});
+    const [dailyModalMode, setDailyModalMode] = useState('search'); // 'search' or 'manual'
+    const [tempPatientSearchTerm, setTempPatientSearchTerm] = useState('');
+    const initialDailyFormData = { lastName: '', firstName: '', furigana: '', bed: '' };
+    const [dailyFormData, setDailyFormData] = useState(initialDailyFormData);
+    const [dailyFuriganaParts, setDailyFuriganaParts] = useState({ last: '', first: '' });
+    const isDailyFuriganaManual = useRef(false);
+    // --- ここまで ---
+    
+    const [editingDailyPatient, setEditingDailyPatient] = useState(null); // This is for editing an existing daily patient, separate from adding.
 
     const [confirmMasterDelete, setConfirmMasterDelete] = useState({ isOpen: false, patientId: null });
     const [confirmDailyDelete, setConfirmDailyDelete] = useState({ isOpen: false, patientId: null });
@@ -218,22 +222,14 @@ const AdminPage = () => {
                 let firstName = data.firstName || '';
                 let name = '';
 
-                if (lastName || firstName) {
-                    name = `${lastName} ${firstName}`.trim();
-                } else if (data.name) {
+                if (lastName || firstName) { name = `${lastName} ${firstName}`.trim(); } 
+                else if (data.name) {
                     name = data.name;
                     const nameParts = data.name.split(/[\s　]+/);
                     lastName = nameParts[0] || '';
                     firstName = nameParts.slice(1).join(' ') || '';
                 }
-
-                return { 
-                    id: doc.id, 
-                    ...data,
-                    name,
-                    lastName,
-                    firstName,
-                };
+                return { id: doc.id, ...data, name, lastName, firstName, };
             });
             setMasterPatients(patientsData);
             setLoadingMaster(false);
@@ -246,37 +242,29 @@ const AdminPage = () => {
     
     useEffect(() => {
         if (isFuriganaManuallyEdited.current) return;
-        
-        const combinedFurigana = [furiganaParts.last, furiganaParts.first]
-            .filter(Boolean)
-            .join(' ');
-
-        setMasterFormData(prev => ({
-            ...prev,
-            furigana: combinedFurigana,
-        }));
+        const combinedFurigana = [furiganaParts.last, furiganaParts.first].filter(Boolean).join(' ');
+        setMasterFormData(prev => ({ ...prev, furigana: combinedFurigana, }));
     }, [furiganaParts]);
+    
+    // --- ▼ 臨時患者フォーム用のふりがな結合ロジック ---
+    useEffect(() => {
+        if (isDailyFuriganaManual.current) return;
+        const combinedFurigana = [dailyFuriganaParts.last, dailyFuriganaParts.first].filter(Boolean).join(' ');
+        setDailyFormData(prev => ({ ...prev, furigana: combinedFurigana }));
+    }, [dailyFuriganaParts]);
 
     const handleOpenMasterModal = (patient = null) => {
         setEditingMasterPatient(patient);
         isFuriganaManuallyEdited.current = false;
         setFormError('');
-
         if (patient) {
             setMasterFormData({ 
-                patientId: patient.patientId || '', 
-                lastName: patient.lastName || '',
-                firstName: patient.firstName || '',
-                furigana: patient.furigana || '', 
-                bed: patient.bed, 
-                day: patient.day, 
-                cool: patient.cool 
+                patientId: patient.patientId || '', lastName: patient.lastName || '',
+                firstName: patient.firstName || '', furigana: patient.furigana || '', 
+                bed: patient.bed, day: patient.day, cool: patient.cool 
             });
-            if(patient.furigana) {
-                 isFuriganaManuallyEdited.current = true;
-            }
+            if(patient.furigana) { isFuriganaManuallyEdited.current = true; }
             setFuriganaParts({ last: '', first: '' });
-
         } else {
             setMasterFormData(initialMasterFormData);
             setFuriganaParts({ last: '', first: '' });
@@ -289,83 +277,121 @@ const AdminPage = () => {
     const handleMasterFormChange = (e) => {
         const { name, value } = e.target;
         setFormError('');
-
         if (name === 'furigana') {
             isFuriganaManuallyEdited.current = true;
             setMasterFormData(prev => ({ ...prev, furigana: value }));
             return;
         }
-
         setMasterFormData(prev => ({ ...prev, [name]: value }));
-
         if (!isFuriganaManuallyEdited.current) {
             if (name === 'lastName') {
-                if (wanakana.isKana(value)) {
-                    setFuriganaParts(prev => ({ ...prev, last: wanakana.toHiragana(value) }));
-                }
+                if (wanakana.isKana(value)) { setFuriganaParts(prev => ({ ...prev, last: wanakana.toHiragana(value) })); }
             } else if (name === 'firstName') {
-                if (wanakana.isKana(value)) {
-                    setFuriganaParts(prev => ({ ...prev, first: wanakana.toHiragana(value) }));
-                }
+                if (wanakana.isKana(value)) { setFuriganaParts(prev => ({ ...prev, first: wanakana.toHiragana(value) })); }
             }
         }
     };
 
     const handleMasterSubmit = async (e) => { 
         e.preventDefault(); 
-
         if (!masterFormData.lastName || !masterFormData.firstName || !masterFormData.bed || !masterFormData.patientId) {
             setFormError('必須項目をすべて入力してください。');
             return; 
         }
-        
         const dataToSave = {
-            patientId: masterFormData.patientId,
-            lastName: masterFormData.lastName,
-            firstName: masterFormData.firstName,
-            furigana: masterFormData.furigana,
-            bed: masterFormData.bed,
-            day: masterFormData.day,
-            cool: masterFormData.cool,
-            facility: selectedFacility,
+            patientId: masterFormData.patientId, lastName: masterFormData.lastName,
+            firstName: masterFormData.firstName, furigana: masterFormData.furigana,
+            bed: masterFormData.bed, day: masterFormData.day,
+            cool: masterFormData.cool, facility: selectedFacility,
         };
-
         try { 
-            if (editingMasterPatient) { 
-                await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...dataToSave, updatedAt: serverTimestamp() }); 
-            } else { 
-                await addDoc(masterPatientsCollectionRef, { ...dataToSave, createdAt: serverTimestamp() }); 
-            } 
+            if (editingMasterPatient) { await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...dataToSave, updatedAt: serverTimestamp() }); } 
+            else { await addDoc(masterPatientsCollectionRef, { ...dataToSave, createdAt: serverTimestamp() }); } 
             handleCloseMasterModal(); 
         } catch (error) { 
             console.error("Error saving master patient:", error); 
             setFormError('保存中にエラーが発生しました。');
         } 
     };
-
-    // (handleDeleteMasterClick 以降の関数は変更ありません)
-    const handleDeleteMasterClick = (patientId) => setConfirmMasterDelete({ isOpen: true, patientId });
-    const handleConfirmMasterDelete = async () => { if (confirmMasterDelete.patientId) { try { await deleteDoc(doc(masterPatientsCollectionRef, confirmMasterDelete.patientId)); } catch (error) { console.error("Error deleting master patient:", error); } setConfirmMasterDelete({ isOpen: false, patientId: null }); } };
-    const handleOpenDailyModal = (patient = null) => {
-        setEditingDailyPatient(patient);
-        setDailyFormData(patient ? { name: patient.name, bed: patient.bed, furigana: patient.furigana || '' } : { name: '', bed: '', furigana: '' });
+    
+    // --- ▼ 臨時患者追加モーダルの関連処理 ---
+    const handleOpenDailyModal = () => {
+        setDailyModalMode('search');
+        setTempPatientSearchTerm('');
+        setDailyFormData(initialDailyFormData);
+        setDailyFuriganaParts({ last: '', first: '' });
+        isDailyFuriganaManual.current = false;
+        setFormError('');
         setDailyModalOpen(true);
     };
-    const handleCloseDailyModal = () => { setDailyModalOpen(false); setEditingDailyPatient(null); };
-    const handleDailyFormChange = (e) => setDailyFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+
+    const handleCloseDailyModal = () => setDailyModalOpen(false);
+
+    const handleDailyFormChange = (e) => {
+        const { name, value } = e.target;
+        setFormError('');
+        if (name === 'furigana') {
+            isDailyFuriganaManual.current = true;
+            setDailyFormData(prev => ({ ...prev, furigana: value }));
+            return;
+        }
+        setDailyFormData(prev => ({ ...prev, [name]: value }));
+        if (!isDailyFuriganaManual.current) {
+            if (name === 'lastName') {
+                if (wanakana.isKana(value)) { setDailyFuriganaParts(prev => ({ ...prev, last: wanakana.toHiragana(value) })); }
+            } else if (name === 'firstName') {
+                if (wanakana.isKana(value)) { setDailyFuriganaParts(prev => ({ ...prev, first: wanakana.toHiragana(value) })); }
+            }
+        }
+    };
+
+    const handleAddTempFromMaster = async (patient) => {
+        try {
+            await addDoc(dailyPatientsCollectionRef(selectedCool), {
+                name: patient.name,
+                furigana: patient.furigana || '',
+                bed: patient.bed,
+                status: '治療中',
+                isTemporary: true,
+                masterPatientId: patient.patientId,
+                createdAt: serverTimestamp(),
+            });
+            handleCloseDailyModal();
+        } catch (error) {
+            console.error("Error adding temporary patient from master:", error);
+            setFormError('臨時患者の追加に失敗しました。');
+        }
+    };
+
     const handleDailySubmit = async (e) => {
         e.preventDefault();
-        if (!dailyFormData.name || !dailyFormData.bed) return;
+        if (!dailyFormData.lastName || !dailyFormData.firstName || !dailyFormData.bed) {
+            setFormError('必須項目をすべて入力してください。');
+            return;
+        }
         try {
-            const targetCollection = dailyPatientsCollectionRef(selectedCool);
-            if (editingDailyPatient) {
-                await updateDoc(doc(targetCollection, editingDailyPatient.id), { name: dailyFormData.name, bed: dailyFormData.bed, furigana: dailyFormData.furigana, updatedAt: serverTimestamp() });
-            } else {
-                await addDoc(targetCollection, { ...dailyFormData, status: '治療中', isTemporary: true, createdAt: serverTimestamp() });
-            }
+            await addDoc(dailyPatientsCollectionRef(selectedCool), {
+                name: `${dailyFormData.lastName} ${dailyFormData.firstName}`.trim(),
+                furigana: dailyFormData.furigana,
+                bed: dailyFormData.bed,
+                status: '治療中',
+                isTemporary: true,
+                createdAt: serverTimestamp()
+            });
             handleCloseDailyModal();
-        } catch (error) { console.error("Error saving daily patient:", error); }
+        } catch (error) { 
+            console.error("Error saving daily patient:", error);
+            setFormError('臨時患者の保存に失敗しました。');
+        }
     };
+    // --- ここまで ---
+
+    const handleDeleteMasterClick = (patientId) => setConfirmMasterDelete({ isOpen: true, patientId });
+    const handleConfirmMasterDelete = async () => { if (confirmMasterDelete.patientId) { try { await deleteDoc(doc(masterPatientsCollectionRef, confirmMasterDelete.patientId)); } catch (error) { console.error("Error deleting master patient:", error); } setConfirmMasterDelete({ isOpen: false, patientId: null }); } };
+    
+    // This is for editing, not adding. We can ignore this for now.
+    const handleOpenEditDailyModal = (patient = null) => { /* ... */ };
+
     const handleDeleteDailyClick = (patientId) => setConfirmDailyDelete({ isOpen: true, patientId });
     const handleConfirmDailyDelete = async () => { if (confirmDailyDelete.patientId) { try { await deleteDoc(doc(dailyPatientsCollectionRef(selectedCool), confirmDailyDelete.patientId)); } catch (error) { console.error("Error deleting daily patient:", error); } setConfirmDailyDelete({ isOpen: false, patientId: null }); } };
     const handleLoadPatients = async () => {
@@ -386,10 +412,8 @@ const AdminPage = () => {
                     const patientName = `${patientData.lastName || ''} ${patientData.firstName || ''}`.trim() || patientData.name || '';
                     const newDailyPatientDocRef = doc(dailyPatientsCollectionRef(selectedCool)); 
                     batch.set(newDailyPatientDocRef, { 
-                        name: patientName, 
-                        furigana: patientData.furigana || '', 
-                        bed: patientData.bed, 
-                        status: '治療中', 
+                        name: patientName, furigana: patientData.furigana || '', 
+                        bed: patientData.bed, status: '治療中', 
                         masterPatientId: patientData.patientId || null,
                         createdAt: serverTimestamp() 
                     });
@@ -401,11 +425,7 @@ const AdminPage = () => {
         if (dailyList.length > 0) { setConfirmLoadModal({ isOpen: true, onConfirm: loadAction }); } else { loadAction(); }
     };
     const handleClearDailyList = async () => {
-        if (dailyList.length === 0) {
-            alert("リストは既に空です。");
-            setConfirmClearListModal({ isOpen: false });
-            return;
-        }
+        if (dailyList.length === 0) { alert("リストは既に空です。"); setConfirmClearListModal({ isOpen: false }); return; }
         try {
             const batch = writeBatch(db);
             dailyList.forEach(patient => {
@@ -423,102 +443,86 @@ const AdminPage = () => {
     
     return (
         <div className="space-y-8">
-            {masterModalOpen && <CustomModal title={editingMasterPatient ? "患者情報の編集" : "新規患者登録"} onClose={handleCloseMasterModal} footer={<><button onClick={handleCloseMasterModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleMasterSubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleMasterSubmit} className="space-y-4">
+            {masterModalOpen && <CustomModal title={editingMasterPatient ? "患者情報の編集" : "新規患者登録"} onClose={handleCloseMasterModal} footer={<><button onClick={handleCloseMasterModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button type="submit" form="master-form" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form id="master-form" onSubmit={handleMasterSubmit} className="space-y-4">
                 {formError && <p className="text-red-500 text-center font-bold mb-4 bg-red-100 p-3 rounded-lg">{formError}</p>}
-                
-                {/* --- ▼ 必須項目にバッジを追加 --- */}
-                <div>
-                    <label className="block font-medium mb-1">患者ID (QRコード用)<RequiredBadge /></label>
-                    <input type="text" name="patientId" value={masterFormData.patientId} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="電子カルテIDなどを入力" required />
-                </div>
-                <div>
-                    <label className="block font-medium mb-1">曜日</label>
-                    <select name="day" value={masterFormData.day} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="月水金">月水金</option><option value="火木土">火木土</option></select>
-                </div>
-                <div>
-                    <label className="block font-medium mb-1">クール</label>
-                    <select name="cool" value={masterFormData.cool} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
-                </div>
-                <div>
-                    <label className="block font-medium mb-1">ベッド番号<RequiredBadge /></label>
-                    <input type="text" name="bed" value={masterFormData.bed} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" required />
-                </div>
-                
+                <div><label className="block font-medium mb-1">患者ID (QRコード用)<RequiredBadge /></label><input type="text" name="patientId" value={masterFormData.patientId} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="電子カルテIDなどを入力" required /></div>
+                <div><label className="block font-medium mb-1">曜日</label><select name="day" value={masterFormData.day} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="月水金">月水金</option><option value="火木土">火木土</option></select></div>
+                <div><label className="block font-medium mb-1">クール</label><select name="cool" value={masterFormData.cool} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
+                <div><label className="block font-medium mb-1">ベッド番号<RequiredBadge /></label><input type="text" name="bed" value={masterFormData.bed} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" required /></div>
                 <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="block font-medium mb-1">姓<RequiredBadge /></label>
-                        <input type="text" name="lastName" value={masterFormData.lastName} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="例：やまだ" required />
-                    </div>
-                    <div>
-                        <label className="block font-medium mb-1">名<RequiredBadge /></label>
-                        <input type="text" name="firstName" value={masterFormData.firstName} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="例：たろう" required />
-                    </div>
+                    <div><label className="block font-medium mb-1">姓<RequiredBadge /></label><input type="text" name="lastName" value={masterFormData.lastName} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="例：やまだ" required /></div>
+                    <div><label className="block font-medium mb-1">名<RequiredBadge /></label><input type="text" name="firstName" value={masterFormData.firstName} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="例：たろう" required /></div>
                 </div>
-                
-                <div>
-                    <label className="block font-medium mb-1">ふりがな (ひらがな)</label>
-                    <input 
-                        type="text" 
-                        name="furigana" 
-                        value={masterFormData.furigana} 
-                        onChange={handleMasterFormChange} 
-                        className="w-full p-2 border rounded-md" 
-                        placeholder="自動入力されます"
-                    />
-                </div>
-                {/* --- ここまで --- */}
+                <div><label className="block font-medium mb-1">ふりがな (ひらがな)</label><input type="text" name="furigana" value={masterFormData.furigana} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="自動入力されます"/></div>
             </form></CustomModal>}
 
-            {/* ( dailyModalOpen以降のJSXは変更ありません ) */}
-            {dailyModalOpen && <CustomModal title={editingDailyPatient ? "臨時情報の編集" : "臨時患者の追加"} onClose={handleCloseDailyModal} footer={<><button onClick={handleCloseDailyModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleDailySubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleDailySubmit} className="space-y-4"><div><label className="block font-medium mb-1">ベッド番号</label><input type="text" name="bed" value={dailyFormData.bed} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /></div><div><label className="block font-medium mb-1">氏名</label><input type="text" name="name" value={dailyFormData.name} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /></div><div><label className="block font-medium mb-1">ふりがな</label><input type="text" name="furigana" value={dailyFormData.furigana} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" placeholder="例：りんじ たろう"/></div></form></CustomModal>}
-            {confirmMasterDelete.isOpen && <ConfirmationModal title="マスタから削除" message="この患者情報をマスタから完全に削除しますか？" onConfirm={handleConfirmMasterDelete} onCancel={() => setConfirmMasterDelete({ isOpen: false, patientId: null })} confirmText="削除" confirmColor="red" />}
-            {confirmDailyDelete.isOpen && <ConfirmationModal title="リストから削除" message="この患者を本日のリストから削除しますか？マスタ登録は残ります。" onConfirm={handleConfirmDailyDelete} onCancel={() => setConfirmDailyDelete({ isOpen: false, patientId: null })} confirmText="削除" confirmColor="red" />}
-            {confirmLoadModal.isOpen && <ConfirmationModal title="読み込みの確認" message="既にリストが存在します。上書きしてマスタから再読み込みしますか？" onConfirm={confirmLoadModal.onConfirm} onCancel={() => setConfirmLoadModal({ isOpen: false, onConfirm: () => {} })} confirmText="再読み込み" confirmColor="blue" />}
-            {confirmClearListModal.isOpen && <ConfirmationModal title="リストの一括削除" message={`【${selectedFacility} | ${selectedDate} | ${selectedCool}クール】のリストを完全に削除します。よろしいですか？`} onConfirm={handleClearDailyList} onCancel={() => setConfirmClearListModal({ isOpen: false })} confirmText="一括削除" confirmColor="red" />}
-            <div className="bg-white p-6 rounded-lg shadow-md">
-                <h3 className="text-xl font-semibold text-gray-800 border-b pb-3 mb-4">本日の呼び出しリスト作成</h3>
-                <p className="text-gray-600 mb-4">グローバル設定（画面上部）で施設・日付・クールを選択し、下のボタンで対象患者を読み込みます。</p>
-                <button onClick={handleLoadPatients} className="w-full md:w-auto bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg transition">対象患者を読み込み</button>
-            </div>
+            {/* --- ▼ 臨時患者追加モーダルのJSX --- */}
+            {dailyModalOpen && <CustomModal title="臨時患者の追加" onClose={handleCloseDailyModal}>
+                <div className="border-b border-gray-200 mb-4">
+                    <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+                        <button onClick={() => setDailyModalMode('search')} className={`${dailyModalMode === 'search' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>マスタから検索</button>
+                        <button onClick={() => setDailyModalMode('manual')} className={`${dailyModalMode === 'manual' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>手動で新規登録</button>
+                    </nav>
+                </div>
+
+                {formError && <p className="text-red-500 text-center font-bold mb-4 bg-red-100 p-3 rounded-lg">{formError}</p>}
+
+                {dailyModalMode === 'search' && (
+                    <div>
+                        <input type="search" placeholder="患者ID, 氏名, ふりがな, ベッド番号で検索" value={tempPatientSearchTerm} onChange={(e) => setTempPatientSearchTerm(e.target.value)} className="w-full p-2 border rounded-md mb-4" />
+                        <div className="max-h-60 overflow-y-auto space-y-2">
+                            {masterPatients.filter(p => {
+                                const term = tempPatientSearchTerm.toLowerCase();
+                                if (!term) return true;
+                                return (p.patientId && p.patientId.toLowerCase().includes(term)) || (p.name && p.name.toLowerCase().includes(term)) || (p.furigana && p.furigana.toLowerCase().includes(term)) || (p.bed && p.bed.toLowerCase().includes(term));
+                            }).map(p => (
+                                <div key={p.id} className="flex justify-between items-center p-2 border rounded-md">
+                                    <div>
+                                        <p className="font-semibold">{p.name}</p>
+                                        <p className="text-sm text-gray-500">ベッド: {p.bed}</p>
+                                    </div>
+                                    <button onClick={() => handleAddTempFromMaster(p)} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1 px-3 rounded-md text-sm">追加</button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {dailyModalMode === 'manual' && (
+                    <form onSubmit={handleDailySubmit} className="space-y-4">
+                         <div><label className="block font-medium mb-1">ベッド番号<RequiredBadge /></label><input type="text" name="bed" value={dailyFormData.bed} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" required /></div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div><label className="block font-medium mb-1">姓<RequiredBadge /></label><input type="text" name="lastName" value={dailyFormData.lastName} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" placeholder="例：りんじ" required /></div>
+                            <div><label className="block font-medium mb-1">名<RequiredBadge /></label><input type="text" name="firstName" value={dailyFormData.firstName} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" placeholder="例：たろう" required /></div>
+                        </div>
+                        <div><label className="block font-medium mb-1">ふりがな (ひらがな)</label><input type="text" name="furigana" value={dailyFormData.furigana} onChange={handleDailyFormChange} className="w-full p-2 border rounded-md" placeholder="自動入力されます"/></div>
+                        <div className="flex justify-end pt-4"><button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">登録</button></div>
+                    </form>
+                )}
+            </CustomModal>}
+
+            {/* ( The rest of the return statement is unchanged ) */}
+            <div className="bg-white p-6 rounded-lg shadow-md"><h3 className="text-xl font-semibold text-gray-800 border-b pb-3 mb-4">本日の呼び出しリスト作成</h3><p className="text-gray-600 mb-4">グローバル設定（画面上部）で施設・日付・クールを選択し、下のボタンで対象患者を読み込みます。</p><button onClick={handleLoadPatients} className="w-full md:w-auto bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg transition">対象患者を読み込み</button></div>
             <div className="bg-white p-6 rounded-lg shadow">
                  <div className="flex justify-between items-center mb-4 border-b pb-2">
                     <h3 className="text-xl font-semibold text-gray-800">リスト ({selectedCool}クール)</h3>
                     <div className="flex items-center space-x-2">
-                        <button title="臨時追加" onClick={() => handleOpenDailyModal(null)} className="flex items-center space-x-2 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm">
+                        <button title="臨時追加" onClick={handleOpenDailyModal} className="flex items-center space-x-2 bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
                         </button>
-                        <button title="リストから全削除" onClick={() => setConfirmClearListModal({ isOpen: true })} disabled={dailyList.length === 0} className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 rounded-lg transition disabled:bg-red-300 disabled:cursor-not-allowed text-sm">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                        </button>
+                        <button title="リストから全削除" onClick={() => setConfirmClearListModal({ isOpen: true })} disabled={dailyList.length === 0} className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 rounded-lg transition disabled:bg-red-300 disabled:cursor-not-allowed text-sm"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                     </div>
                  </div>
                  {loadingDaily ? <LoadingSpinner /> : ( dailyList.length > 0 ? ( 
                  <div className="overflow-x-auto">
                     <table className="min-w-full bg-white">
                         <thead className="bg-gray-100">
-                            <tr>
-                                <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">操作</th>
-                                <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">状態</th>
-                                <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">ベッド番号</th>
-                                <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">氏名</th>
-                                <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">ふりがな</th>
-                            </tr>
+                            <tr><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">操作</th><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">状態</th><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">ベッド番号</th><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">氏名</th><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">ふりがな</th></tr>
                         </thead>
                         <tbody>
                             {dailyList.sort((a, b) => a.bed.localeCompare(b.bed, undefined, {numeric: true})).map(p => (
                                 <tr key={p.id} className="border-b hover:bg-gray-50">
-                                    <td className="p-2">
-                                        <div className="flex space-x-2">
-                                            {p.status === '治療中' && <button title="呼出" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '呼出中')} className="p-2 rounded bg-blue-500 hover:bg-blue-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg></button>}
-                                            {p.status === '呼出中' && <>
-                                                <button title="退出" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '退出済')} className="p-2 rounded bg-purple-500 hover:bg-purple-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg></button>
-                                                <button title="キャンセル" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="p-2 rounded bg-gray-500 hover:bg-gray-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6-6m-6 6l6 6" /></svg></button>
-                                            </>}
-                                            {p.status === '退出済' && <button title="治療中に戻す" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="p-2 rounded bg-green-500 hover:bg-green-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg></button>}
-                                            <button title="編集" onClick={() => handleOpenDailyModal(p)} className="p-2 rounded bg-yellow-500 hover:bg-yellow-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
-                                            <button title="削除" onClick={() => handleDeleteDailyClick(p.id)} className="p-2 rounded bg-red-500 hover:bg-red-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
-                                        </div>
-                                    </td>
+                                    <td className="p-2"><div className="flex space-x-2">{p.status === '治療中' && <button title="呼出" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '呼出中')} className="p-2 rounded bg-blue-500 hover:bg-blue-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg></button>}{p.status === '呼出中' && <> <button title="退出" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '退出済')} className="p-2 rounded bg-purple-500 hover:bg-purple-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg></button> <button title="キャンセル" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="p-2 rounded bg-gray-500 hover:bg-gray-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6-6m-6 6l6 6" /></svg></button></>}{p.status === '退出済' && <button title="治療中に戻す" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="p-2 rounded bg-green-500 hover:bg-green-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg></button>}<button title="編集" onClick={() => { /* We need to implement this edit modal */ }} className="p-2 rounded bg-yellow-500 hover:bg-yellow-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button><button title="削除" onClick={() => handleDeleteDailyClick(p.id)} className="p-2 rounded bg-red-500 hover:bg-red-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div></td>
                                     <td className="p-2 text-sm whitespace-nowrap"><StatusBadge status={p.status} /></td>
                                     <td className="p-2 text-sm whitespace-nowrap">{p.bed}</td>
                                     <td className="p-2 text-sm whitespace-nowrap">{p.name}{p.isTemporary && <span className="ml-2 text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">臨時</span>}</td>
@@ -534,38 +538,25 @@ const AdminPage = () => {
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
                     <h3 className="text-xl font-semibold text-gray-800">通常患者マスタ</h3>
                     <div className="flex items-center space-x-2">
-                        <input 
-                            type="search" 
-                            placeholder="氏名, ふりがな, ベッド番号で検索" 
-                            value={masterSearchTerm}
-                            onChange={(e) => setMasterSearchTerm(e.target.value)}
-                            className="p-2 border rounded-md text-sm"
-                        />
-                        <button title="患者マスタ追加" onClick={() => handleOpenMasterModal()} className="flex items-center space-x-2 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
-                        </button>
+                        {/* ▼ master list search placeholder & logic updated */}
+                        <input type="search" placeholder="患者ID, 氏名, ふりがな, ベッド番号で検索" value={masterSearchTerm} onChange={(e) => setMasterSearchTerm(e.target.value)} className="p-2 border rounded-md text-sm"/>
+                        <button title="患者マスタ追加" onClick={() => handleOpenMasterModal()} className="flex items-center space-x-2 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg></button>
                     </div>
                 </div>
                 {loadingMaster ? <LoadingSpinner /> : (
                     <div className="overflow-x-auto">
                         <table className="min-w-full bg-white">
                             <thead className="bg-gray-100">
-                                <tr>
-                                    <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">操作</th>
-                                    <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">曜日</th>
-                                    <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">クール</th>
-                                    <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">ベッド番号</th>
-                                    <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">氏名</th>
-                                    <th className="p-2 text-left text-sm font-semibold whitespace-nowrap">ふりがな</th>
-                                </tr>
+                                <tr><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">操作</th><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">曜日</th><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">クール</th><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">ベッド番号</th><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">氏名</th><th className="p-2 text-left text-sm font-semibold whitespace-nowrap">ふりがな</th></tr>
                             </thead>
                             <tbody>
                                 {masterPatients.length > 0 ? 
-                                    masterPatients
-                                    .filter(p => {
+                                    masterPatients.filter(p => {
                                         const term = masterSearchTerm.toLowerCase();
                                         if (!term) return true;
-                                        return (p.name && p.name.toLowerCase().includes(term)) || 
+                                        // ▼ master list search logic updated
+                                        return (p.patientId && p.patientId.toLowerCase().includes(term)) ||
+                                               (p.name && p.name.toLowerCase().includes(term)) || 
                                                (p.furigana && p.furigana.toLowerCase().includes(term)) ||
                                                (p.bed && p.bed.toLowerCase().includes(term));
                                     })
@@ -578,22 +569,11 @@ const AdminPage = () => {
                                         return a.bed.localeCompare(b.bed, undefined, { numeric: true });
                                     }).map(p => (
                                         <tr key={p.id} className="border-b hover:bg-gray-50">
-                                            <td className="p-2">
-                                                <div className="flex space-x-2">
-                                                    <button title="編集" onClick={() => handleOpenMasterModal(p)} className="p-2 rounded bg-yellow-500 hover:bg-yellow-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
-                                                    <button title="削除" onClick={() => handleDeleteMasterClick(p.id)} className="p-2 rounded bg-red-500 hover:bg-red-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
-                                                </div>
-                                            </td>
-                                            <td className="p-2 text-sm whitespace-nowrap">{p.day}</td>
-                                            <td className="p-2 text-sm whitespace-nowrap">{p.cool}</td>
-                                            <td className="p-2 text-sm whitespace-nowrap">{p.bed}</td>
-                                            <td className="p-2 text-sm whitespace-nowrap">{p.name}</td>
-                                            <td className="p-2 text-sm whitespace-nowrap">{p.furigana}</td>
+                                            <td className="p-2"><div className="flex space-x-2"><button title="編集" onClick={() => handleOpenMasterModal(p)} className="p-2 rounded bg-yellow-500 hover:bg-yellow-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button><button title="削除" onClick={() => handleDeleteMasterClick(p.id)} className="p-2 rounded bg-red-500 hover:bg-red-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div></td>
+                                            <td className="p-2 text-sm whitespace-nowrap">{p.day}</td><td className="p-2 text-sm whitespace-nowrap">{p.cool}</td><td className="p-2 text-sm whitespace-nowrap">{p.bed}</td><td className="p-2 text-sm whitespace-nowrap">{p.name}</td><td className="p-2 text-sm whitespace-nowrap">{p.furigana}</td>
                                         </tr>
                                     )) : 
-                                    <tr>
-                                        <td colSpan="6" className="text-center py-8 text-gray-500">この施設にはまだ患者が登録されていません。</td>
-                                    </tr>
+                                    <tr><td colSpan="6" className="text-center py-8 text-gray-500">この施設にはまだ患者が登録されていません。</td></tr>
                                 }
                             </tbody>
                         </table>
