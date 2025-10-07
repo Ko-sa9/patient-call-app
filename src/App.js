@@ -1250,6 +1250,8 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
     // --- カメラ切り替え機能 ---
     const [cameras, setCameras] = useState([]); // 利用可能なカメラのリスト
     const [selectedCameraId, setSelectedCameraId] = useState(''); // 選択中のカメラID
+    // --- 画面回転検知 ---
+    const [orientation, setOrientation] = useState(window.screen.orientation.type);
 
     // デバイスのカメラを取得し、stateにセットする
     useEffect(() => {
@@ -1267,6 +1269,18 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
         });
     }, [selectedCameraId]);
     // --- ここまでカメラ切り替え機能 ---
+
+    // --- 画面回転イベントの監視 ---
+    useEffect(() => {
+        const handleOrientationChange = () => {
+            setOrientation(window.screen.orientation.type);
+        };
+        window.screen.orientation.addEventListener('change', handleOrientationChange);
+        return () => {
+            window.screen.orientation.removeEventListener('change', handleOrientationChange);
+        };
+    }, []);
+    // --- ここまで画面回転イベントの監視 ---
 
 
     // 選択されたカメラでスキャンを開始する
@@ -1322,7 +1336,7 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
                 });
             }
         };
-    }, [selectedCameraId]); // selectedCameraIdが変わったらスキャナを再起動
+    }, [selectedCameraId, orientation]); // selectedCameraIdまたはorientationが変わったらスキャナを再起動
 
     // カメラを切り替える
     const handleCameraSwitch = () => {
@@ -1665,7 +1679,7 @@ export default function App() {
     // AppContext.Providerでグローバルな状態を配下のコンポーネントに提供
     return (
         <AppContext.Provider value={{ selectedFacility, setSelectedFacility, selectedDate, setSelectedDate, selectedCool, setSelectedCool }}>
-            {/* viewModeに応じて表示するコンポーネントを切り替える */}
+            {/* viewModeに応じて表示するコンポーネントを切り替え */}
             {viewMode === 'login' && <RoleSelectionPage onSelectRole={handleRoleSelect} />}
             {viewMode === 'password' && <PasswordModal onSuccess={handlePasswordSuccess} onCancel={() => setViewMode('login')} />}
             {viewMode === 'facilitySelection' && <FacilitySelectionPage onSelectFacility={handleFacilitySelect} onGoBack={() => setViewMode('login')} />}
