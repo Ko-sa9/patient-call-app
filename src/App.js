@@ -372,7 +372,9 @@ const AdminPage = () => {
         try {
             await addDoc(dailyPatientsCollectionRef(selectedCool), {
                 name: patient.name, furigana: patient.furigana || '', bed: patient.bed,
-                status: '治療中', isTemporary: true, masterPatientId: patient.patientId,
+                status: '治療中', isTemporary: true, 
+                masterPatientId: patient.patientId,
+                masterDocId: patient.id,
                 createdAt: serverTimestamp(),
             });
             handleCloseAddDailyModal();
@@ -495,6 +497,7 @@ const AdminPage = () => {
                         name: patientName, furigana: patientData.furigana || '', 
                         bed: patientData.bed, status: '治療中', 
                         masterPatientId: patientData.patientId || null,
+                        masterDocId: patientDoc.id,
                         createdAt: serverTimestamp() 
                     });
                 });
@@ -521,9 +524,11 @@ const AdminPage = () => {
         }
     };
 
-    // --- ▼ 新機能：マスターからの同期処理 ---
     const handleSyncFromMaster = async (dailyPatient) => {
-        const masterPatient = masterPatients.find(p => p.patientId === dailyPatient.masterPatientId);
+        const masterPatient = dailyPatient.masterDocId 
+            ? masterPatients.find(p => p.id === dailyPatient.masterDocId)
+            : masterPatients.find(p => p.patientId === dailyPatient.masterPatientId);
+
         if (!masterPatient) {
             alert('同期元のマスター患者が見つかりません。');
             return;
@@ -531,6 +536,9 @@ const AdminPage = () => {
 
         const updates = {};
 
+        if (dailyPatient.masterPatientId !== masterPatient.patientId) {
+            updates.masterPatientId = masterPatient.patientId;
+        }
         if (dailyPatient.name !== masterPatient.name) {
             updates.name = masterPatient.name;
         }
@@ -552,7 +560,6 @@ const AdminPage = () => {
             alert('マスターからの同期に失敗しました。');
         }
     };
-    // --- ここまで ---
     
     return (
         <div className="space-y-8">
@@ -574,15 +581,14 @@ const AdminPage = () => {
                 {formError && <p className="text-red-500 text-center font-bold mb-4 bg-red-100 p-3 rounded-lg">{formError}</p>}
                 {dailyModalMode === 'search' && (
                     <div>
-                        <input type="search" placeholder="患者ID, 氏名, ふりがな, ベッド番号で検索" value={tempPatientSearchTerm} onChange={(e) => setTempPatientSearchTerm(e.target.value)} className="w-full p-2 border rounded-md mb-4" />
+                        <input type="search" placeholder="患者ID, 氏名, ふりがなで検索" value={tempPatientSearchTerm} onChange={(e) => setTempPatientSearchTerm(e.target.value)} className="w-full p-2 border rounded-md mb-4" />
                         <div className="max-h-60 overflow-y-auto space-y-2">
                             {masterPatients.filter(p => {
                                 const term = tempPatientSearchTerm.toLowerCase();
                                 if (!term) return false;
                                 return (p.patientId && p.patientId.toLowerCase().includes(term)) || 
                                        (p.name && p.name.toLowerCase().includes(term)) || 
-                                       (p.furigana && p.furigana.toLowerCase().includes(term)) || 
-                                       (p.bed && p.bed.toLowerCase().includes(term));
+                                       (p.furigana && p.furigana.toLowerCase().includes(term));
                             }).map(p => (
                                 <div key={p.id} className="flex justify-between items-center p-2 border rounded-md">
                                     <div>
@@ -638,20 +644,28 @@ const AdminPage = () => {
                                 if (!isAExited && isBExited) return -1;
                                 return a.bed.localeCompare(b.bed, undefined, { numeric: true });
                             }).map(p => {
-                                // --- ▼ 新機能：マスターとの差分をチェック ---
-                                const masterPatient = masterPatients.find(mp => mp.patientId === p.masterPatientId);
+                                const masterPatient = p.masterDocId 
+                                    ? masterPatients.find(mp => mp.id === p.masterDocId) 
+                                    : masterPatients.find(mp => mp.patientId === p.masterPatientId);
+                                
                                 let isOutOfSync = false;
                                 if (masterPatient) {
-                                    isOutOfSync = p.name !== masterPatient.name || p.furigana !== masterPatient.furigana || p.bed !== masterPatient.bed;
+                                    isOutOfSync = p.name !== masterPatient.name || 
+                                                  p.furigana !== masterPatient.furigana || 
+                                                  p.bed !== masterPatient.bed ||
+                                                  p.masterPatientId !== masterPatient.patientId;
                                 }
-                                // --- ここまで ---
                                 return (
                                 <tr key={p.id} className="border-b hover:bg-gray-50">
                                     <td className="p-2"><div className="flex space-x-2">
                                         {isOutOfSync && <button title="マスターから更新" onClick={() => handleSyncFromMaster(p)} className="p-2 rounded bg-teal-500 hover:bg-teal-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg></button>}
                                         {p.status === '治療中' && <button title="呼出" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '呼出中')} className="p-2 rounded bg-blue-500 hover:bg-blue-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg></button>}
                                         {p.status === '呼出中' && <> <button title="退出" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '退出済')} className="p-2 rounded bg-purple-500 hover:bg-purple-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg></button> <button title="キャンセル" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="p-2 rounded bg-gray-500 hover:bg-gray-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6-6m-6 6l6 6" /></svg></button></>}
-                                        {p.status === '退出済' && <button title="治療中に戻す" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="p-2 rounded bg-green-500 hover:bg-green-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h5M20 20v-5h-5" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg></button>}
+                                        {p.status === '退出済' && <button title="治療中に戻す" onClick={() => updatePatientStatus(selectedFacility, selectedDate, selectedCool, p.id, '治療中')} className="p-2 rounded bg-gray-500 hover:bg-gray-600 text-white">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                            </svg>
+                                        </button>}
                                         <button title="編集" onClick={() => handleOpenEditDailyModal(p)} className="p-2 rounded bg-yellow-500 hover:bg-yellow-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
                                         <button title="削除" onClick={() => handleDeleteDailyClick(p.id)} className="p-2 rounded bg-red-500 hover:bg-red-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                                     </div></td>
@@ -664,7 +678,7 @@ const AdminPage = () => {
                 ) : <p className="text-center py-8 text-gray-500">リストが空です。上記ボタンから患者を読み込んでください。</p>)}
             </div>
             <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="text-xl font-semibold text-gray-800">通常患者マスタ</h3><div className="flex items-center space-x-2"><input type="search" placeholder="患者ID, 氏名, ふりがな, ベッド番号で検索" value={masterSearchTerm} onChange={(e) => setMasterSearchTerm(e.target.value)} className="p-2 border rounded-md text-sm"/><button title="患者マスタ追加" onClick={() => handleOpenMasterModal()} className="flex items-center space-x-2 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg></button></div></div>
+                <div className="flex justify-between items-center mb-4 border-b pb-2"><h3 className="text-xl font-semibold text-gray-800">通常患者マスタ</h3><div className="flex items-center space-x-2"><input type="search" placeholder="患者ID, 氏名, ふりがなで検索" value={masterSearchTerm} onChange={(e) => setMasterSearchTerm(e.target.value)} className="p-2 border rounded-md text-sm"/><button title="患者マスタ追加" onClick={() => handleOpenMasterModal()} className="flex items-center space-x-2 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg></button></div></div>
                 {loadingMaster ? <LoadingSpinner /> : (
                     <div className="overflow-x-auto">
                         <table className="min-w-full bg-white">
@@ -673,7 +687,13 @@ const AdminPage = () => {
                             </thead>
                             <tbody>
                                 {masterPatients.length > 0 ? 
-                                    masterPatients.filter(p => { const term = masterSearchTerm.toLowerCase(); if (!term) return true; return (p.patientId && p.patientId.toLowerCase().includes(term)) || (p.name && p.name.toLowerCase().includes(term)) || (p.furigana && p.furigana.toLowerCase().includes(term)) || (p.bed && p.bed.toLowerCase().includes(term)); })
+                                    masterPatients.filter(p => { 
+                                        const term = masterSearchTerm.toLowerCase();
+                                        if (!term) return true;
+                                        return (p.patientId && p.patientId.toLowerCase().includes(term)) ||
+                                               (p.name && p.name.toLowerCase().includes(term)) || 
+                                               (p.furigana && p.furigana.toLowerCase().includes(term));
+                                    })
                                     .sort((a, b) => {
                                         const dayOrder = { '月水金': 1, '火木土': 2 }; const dayCompare = (dayOrder[a.day] || 99) - (dayOrder[b.day] || 99);
                                         if (dayCompare !== 0) return dayCompare;
