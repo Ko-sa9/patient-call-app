@@ -175,6 +175,7 @@ const StatusBadge = ({ status }) => {
 // --- 1. Admin Page ---
 const RequiredBadge = () => <span className="ml-2 bg-red-500 text-white text-xs font-semibold px-2 py-0.5 rounded-full">必須</span>;
 
+// AdminPageコンポーネントを、このコードに丸ごと置き換えてください。
 const AdminPage = () => {
     const { selectedFacility, selectedDate, selectedCool } = useContext(AppContext);
     const { dailyList, loading: loadingDaily } = useDailyList();
@@ -320,8 +321,11 @@ const AdminPage = () => {
             cool: masterFormData.cool, facility: selectedFacility,
         };
         try { 
-            if (editingMasterPatient) { await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...dataToSave, updatedAt: serverTimestamp() }); } 
-            else { await addDoc(masterPatientsCollectionRef, { ...dataToSave, createdAt: serverTimestamp() }); } 
+            if (editingMasterPatient) { 
+                await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...dataToSave, updatedAt: serverTimestamp() }); 
+            } else { 
+                await addDoc(masterPatientsCollectionRef, { ...dataToSave, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }); 
+            } 
             handleCloseMasterModal(); 
         } catch (error) { 
             console.error("Error saving master patient:", error); 
@@ -376,6 +380,7 @@ const AdminPage = () => {
                 masterPatientId: patient.patientId,
                 masterDocId: patient.id,
                 createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
             });
             handleCloseAddDailyModal();
         } catch (error) {
@@ -394,7 +399,9 @@ const AdminPage = () => {
             await addDoc(dailyPatientsCollectionRef(selectedCool), {
                 name: `${dailyFormData.lastName} ${dailyFormData.firstName}`.trim(),
                 furigana: dailyFormData.furigana, bed: dailyFormData.bed,
-                status: '治療中', isTemporary: true, createdAt: serverTimestamp()
+                status: '治療中', isTemporary: true, 
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
             });
             handleCloseAddDailyModal();
         } catch (error) { 
@@ -476,6 +483,7 @@ const AdminPage = () => {
     
     const handleDeleteDailyClick = (patientId) => setConfirmDailyDelete({ isOpen: true, patientId });
     const handleConfirmDailyDelete = async () => { if (confirmDailyDelete.patientId) { try { await deleteDoc(doc(dailyPatientsCollectionRef(selectedCool), confirmDailyDelete.patientId)); } catch (error) { console.error("Error deleting daily patient:", error); } setConfirmDailyDelete({ isOpen: false, patientId: null }); } };
+
     const handleLoadPatients = async () => {
         const dayQuery = getDayQueryString(selectedDate);
         if (!dayQuery) { alert("日曜日は対象外です。"); return; }
@@ -498,7 +506,8 @@ const AdminPage = () => {
                         bed: patientData.bed, status: '治療中', 
                         masterPatientId: patientData.patientId || null,
                         masterDocId: patientDoc.id,
-                        createdAt: serverTimestamp() 
+                        createdAt: serverTimestamp(),
+                        updatedAt: serverTimestamp(),
                     });
                 });
                 await batch.commit();
@@ -507,6 +516,7 @@ const AdminPage = () => {
         };
         if (dailyList.length > 0) { setConfirmLoadModal({ isOpen: true, onConfirm: loadAction }); } else { loadAction(); }
     };
+    
     const handleClearDailyList = async () => {
         if (dailyList.length === 0) { alert("リストは既に空です。"); setConfirmClearListModal({ isOpen: false }); return; }
         try {
@@ -535,7 +545,6 @@ const AdminPage = () => {
         }
 
         const updates = {};
-
         if (dailyPatient.masterPatientId !== masterPatient.patientId) {
             updates.masterPatientId = masterPatient.patientId;
         }
@@ -649,11 +658,15 @@ const AdminPage = () => {
                                     : masterPatients.find(mp => mp.patientId === p.masterPatientId);
                                 
                                 let isOutOfSync = false;
-                                if (masterPatient) {
-                                    isOutOfSync = p.name !== masterPatient.name || 
-                                                  p.furigana !== masterPatient.furigana || 
-                                                  p.bed !== masterPatient.bed ||
-                                                  p.masterPatientId !== masterPatient.patientId;
+                                if (masterPatient && masterPatient.updatedAt && p.updatedAt) {
+                                    const hasDataDifference = p.name !== masterPatient.name || 
+                                                              p.furigana !== masterPatient.furigana || 
+                                                              p.bed !== masterPatient.bed ||
+                                                              p.masterPatientId !== masterPatient.patientId;
+                                    
+                                    if (hasDataDifference && masterPatient.updatedAt.toDate() > p.updatedAt.toDate()) {
+                                        isOutOfSync = true;
+                                    }
                                 }
                                 return (
                                 <tr key={p.id} className="border-b hover:bg-gray-50">
