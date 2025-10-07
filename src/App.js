@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import * as wanakana from 'wanakana';
 
 // --- Firebase Configuration ---
@@ -525,7 +525,7 @@ const AdminPage = () => {
         <div className="space-y-8">
             {masterModalOpen && <CustomModal title={editingMasterPatient ? "患者情報の編集" : "新規患者登録"} onClose={handleCloseMasterModal} footer={<><button onClick={handleCloseMasterModal} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">キャンセル</button><button onClick={handleMasterSubmit} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg">保存</button></>}><form onSubmit={handleMasterSubmit} className="space-y-4">
                 {formError && <p className="text-red-500 text-center font-bold mb-4 bg-red-100 p-3 rounded-lg">{formError}</p>}
-                <div><label className="block font-medium mb-1">患者ID (QRコード用)<RequiredBadge /></label><input type="text" name="patientId" value={masterFormData.patientId} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="電子カルテIDなどを入力" required /></div>
+                <div><label className="block font-medium mb-1">患者ID (QRコード用)<RequiredBadge /></label><input type="text" name="patientId" value={masterFormData.patientId} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" placeholder="電子カルテID(8桁)を入力" required /></div>
                 <div><label className="block font-medium mb-1">曜日</label><select name="day" value={masterFormData.day} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="月水金">月水金</option><option value="火木土">火木土</option></select></div>
                 <div><label className="block font-medium mb-1">クール</label><select name="cool" value={masterFormData.cool} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>
                 <div><label className="block font-medium mb-1">ベッド番号<RequiredBadge /></label><input type="text" name="bed" value={masterFormData.bed} onChange={handleMasterFormChange} className="w-full p-2 border rounded-md" required /></div>
@@ -872,12 +872,6 @@ const StaffPage = () => {
 // 修正対象のコンポーネント
 const QrScannerModal = ({ onClose, onScanSuccess }) => {
     const [scanResult, setScanResult] = useState(null);
-    
-    // --- カメラ切り替え機能のために追加 ---
-    const [cameras, setCameras] = useState([]); // 利用可能なカメラのリスト
-    const [selectedCameraId, setSelectedCameraId] = useState(''); // 選択中のカメラID
-    // --- ここまで ---
-    
     const isProcessingRef = useRef(false);
     
     const onScanSuccessRef = useRef(onScanSuccess);
@@ -885,26 +879,29 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
         onScanSuccessRef.current = onScanSuccess;
     }, [onScanSuccess]);
 
-    // ▼ コンポーネント表示時に一度だけ、利用可能なカメラを取得する
+    // ▼ カメラ切り替え機能もそのまま含まれています
+    const [cameras, setCameras] = useState([]);
+    const [selectedCameraId, setSelectedCameraId] = useState('');
+
     useEffect(() => {
         Html5Qrcode.getCameras().then(devices => {
             if (devices && devices.length) {
                 setCameras(devices);
-                // 優先的に背面カメラ(environment)を選択、なければ最初のカメラを選択
-                const backCamera = devices.find(device => device.label.toLowerCase().includes('back')) || devices[0];
-                setSelectedCameraId(backCamera.id);
+                // 以前に選択したカメラIDがなければ、背面カメラを優先的に選択
+                if (!selectedCameraId) {
+                    const backCamera = devices.find(device => device.label.toLowerCase().includes('back')) || devices[0];
+                    setSelectedCameraId(backCamera.id);
+                }
             }
         }).catch(err => {
             console.error("カメラの取得に失敗しました。", err);
         });
-    }, []);
+    }, [selectedCameraId]);
+    // --- ここまでカメラ切り替え機能 ---
 
-    // ▼ 選択されたカメラIDが変わるたびに、スキャナを再起動する
+
     useEffect(() => {
-        // 選択されたカメラがない場合は何もしない
-        if (!selectedCameraId) {
-            return;
-        }
+        if (!selectedCameraId) return;
 
         const html5QrCode = new Html5Qrcode('qr-reader-container');
         
@@ -915,13 +912,23 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
             setScanResult(result);
             setTimeout(() => {
                 isProcessingRef.current = false;
-            }, 1000); // 1秒間は再スキャンしない
+            }, 1000);
         };
 
-        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+        // --- ▼ バーコードも読み取れるように設定されています ---
+        const config = { 
+            fps: 10, 
+            qrbox: { width: 250, height: 250 },
+            formatsToScan: [
+                Html5QrcodeSupportedFormats.QR_CODE,
+                Html5QrcodeSupportedFormats.CODE_128,
+                Html5QrcodeSupportedFormats.EAN_13,
+            ]
+        };
+        // --- ここまでバーコード設定 ---
 
         html5QrCode.start(
-            selectedCameraId, // 選択されたカメラIDを使用
+            selectedCameraId,
             config,
             qrCodeSuccessCallback,
             undefined
@@ -930,7 +937,6 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
             setScanResult({ success: false, message: "カメラの起動に失敗しました。" });
         });
 
-        // モーダルが閉じる時、またはカメラが切り替わる時にスキャナを停止
         return () => {
             if (html5QrCode && html5QrCode.isScanning) {
                 html5QrCode.stop().catch(err => {
@@ -938,21 +944,19 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
                 });
             }
         };
-    }, [selectedCameraId]); // selectedCameraIdが変更されたらこのuseEffectを再実行
+    }, [selectedCameraId]);
 
-    // --- カメラ切り替えボタンの処理 ---
     const handleCameraSwitch = () => {
-        if (cameras.length < 2) return; // カメラが2つ未満なら何もしない
+        if (cameras.length < 2) return;
         const currentIndex = cameras.findIndex(c => c.id === selectedCameraId);
         const nextIndex = (currentIndex + 1) % cameras.length;
         setSelectedCameraId(cameras[nextIndex].id);
     };
 
     return (
-        <CustomModal title="QRコードで呼び出し" onClose={onClose} footer={<button onClick={onClose} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">閉じる</button>}>
+        <CustomModal title="QR/バーコードで呼び出し" onClose={onClose} footer={<button onClick={onClose} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">閉じる</button>}>
             <div id="qr-reader-container" className="w-full relative"></div>
             
-            {/* --- カメラ切り替えボタンのUI --- */}
             {cameras.length > 1 && (
                 <div className="text-center mt-3">
                     <button 
@@ -966,7 +970,6 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
                     </button>
                 </div>
             )}
-            {/* --- ここまで --- */}
             
             {scanResult && (
                 <div className={`mt-4 p-3 rounded text-center font-semibold ${scanResult.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
