@@ -88,7 +88,7 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
 // --- App Context for Shared State ---
 // アプリ全体で共有する状態（選択中の施設、日付、クール）を管理するためのContext。
 const AppContext = createContext();
-const FACILITIES = ["本院透析室", "坂田透析棠", "じんクリニック", "木更津クリニック"]; // 施設リスト
+const FACILITIES = ["本院透析室", "坂田透析棟", "じんクリニック", "木更津クリニック"]; // 施設リスト
 
 // --- Custom Hooks ---
 
