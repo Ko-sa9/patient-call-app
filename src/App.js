@@ -5,7 +5,7 @@ import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDoc
 import { getFunctions } from 'firebase/functions';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import * as wanakana from 'wanakana';
-import QRCode from 'qrcode.react';
+import { QRCode } from 'qrcode.react';
 import QrCodeListPage from './components/QrCodeListPage.js';
 
 // --- Firebase Configuration ---

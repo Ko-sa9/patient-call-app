@@ -1,5 +1,5 @@
 import React from 'react';
-import QRCode from 'qrcode.react';
+import { QRCode } from 'qrcode.react';
 
 // このコンポーネントは、患者リスト(patients)と戻るボタンの関数(onBack)を受け取ります
 const QrCodeListPage = ({ patients, onBack }) => {
