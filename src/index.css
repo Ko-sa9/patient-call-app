@@ -28,7 +28,7 @@
 
 .qr-code-wrapper {
   display: flex;
-  justify-content: space-around;
+  justify-content: space-between; /* 両端に配置するように変更 */
   align-items: center;
 }
 
@@ -69,7 +69,8 @@
   }
 
   .qr-patient-item {
-    width: 100%; /* 印刷時は1列で大きく表示 */
+    width: calc(50% - 8px); /* 印刷時も2列表示を維持 */
     border: 1px solid #000;
+    box-sizing: border-box; /* width計算にpaddingとborderを含める */
   }
 }
