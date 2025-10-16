@@ -6,23 +6,23 @@
 .qr-list-container {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px; /* アイテム間の余白を縮小 */
+  gap: 5px; /* アイテム間の余白 */
 }
 
 .qr-patient-item {
   border: 1px solid #ccc;
-  padding: 4px; /* 内側の余白を縮小 */
+  padding: 2px; /* 内側の余白を縮小 */
   border-radius: 8px;
-  width: calc(33.333% - 6px); /* 画面・印刷ともに3列表示 */
+  width: calc(20% - 4px); /* 画面・印刷ともに5列表示 */
   box-sizing: border-box;
   page-break-inside: avoid; /* 印刷時にアイテムがページをまたがないようにする */
   display: flex;
   flex-direction: column;
-  gap: 4px; /* 内部要素の余白を縮小 */
+  gap: 2px; /* 内部要素の余白を縮小 */
 }
 
 .patient-name {
-  font-size: 1rem; /* フォントサイズを少し縮小 */
+  font-size: 0.8rem; /* フォントサイズを縮小 */
   font-weight: bold;
   text-align: center;
   margin-bottom: 0;
@@ -33,8 +33,11 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 10px; /* QRコード間の余白 */
+  gap: 8px; /* QRコード間の余白 */
   position: relative; /* 山折り線のための基準位置 */
+  border: 1px dashed #555; /* 切り取り線 */
+  padding: 4px; /* 切り取り線の内側余白 */
+  border-radius: 4px;
 }
 
 /* 山折り線 */
@@ -42,8 +45,8 @@
   content: '';
   position: absolute;
   left: 50%;
-  top: 5%;
-  bottom: 5%;
+  top: 10%;
+  bottom: 10%;
   border-left: 1px dashed #888;
   transform: translateX(-50%);
 }
@@ -52,7 +55,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 2px; /* QRコードとIDの余白 */
 }
 
 .qr-code-box svg {
@@ -62,7 +65,7 @@
 
 .patient-id {
   font-family: monospace;
-  font-size: 0.8rem; /* フォントサイズを少し縮小 */
+  font-size: 0.6rem; /* フォントサイズを縮小 */
 }
 
 /* --- 印刷時のみ適用されるスタイル --- */
@@ -77,7 +80,7 @@
     background-color: white;
     padding: 0;
     margin: 0;
-    font-size: 9pt; /* 全体のフォントサイズをさらに調整 */
+    font-size: 8pt; /* 全体のフォントサイズをさらに調整 */
   }
 
   main {
@@ -86,17 +89,23 @@
   }
 
   .qr-list-container {
-    gap: 4px; /* アイテム間の余白を縮小 */
+    gap: 2px; /* アイテム間の余白を縮小 */
   }
 
   .qr-patient-item {
+    width: calc(20% - 2px); /* 5列表示 */
     border: 1px solid #000; /* 枠線を黒に */
     box-sizing: border-box;
-    padding: 4px; /* 内側の余白を縮小 */
+    padding: 2px; /* 内側の余白を縮小 */
   }
 
   .patient-name {
-    font-size: 0.8rem; /* 名前フォントサイズを縮小 */
+    font-size: 0.7rem; /* 名前フォントサイズを縮小 */
+  }
+
+  .qr-code-wrapper {
+    gap: 6px;
+    padding: 2px;
   }
 
   .qr-code-box svg {
@@ -105,6 +114,6 @@
   }
 
   .patient-id {
-    font-size: 0.7rem; /* IDフォントサイズを縮小 */
+    font-size: 0.6rem; /* IDフォントサイズを縮小 */
   }
 }
