@@ -30,12 +30,12 @@ const QrCodeListPage = ({ patients, onBack }) => {
                 <div className="qr-code-wrapper">
                   {/* 1つ目のQRコード */}
                   <div className="qr-code-box">
-                    <QRCodeSVG value={patient.patientId} size={128} />
+                    <QRCodeSVG value={patient.patientId} />
                     <span className="patient-id">{patient.patientId}</span>
                   </div>
                   {/* 2つ目のQRコード */}
                   <div className="qr-code-box">
-                    <QRCodeSVG value={patient.patientId} size={128} />
+                    <QRCodeSVG value={patient.patientId} />
                     <span className="patient-id">{patient.patientId}</span>
                   </div>
                 </div>
