@@ -681,6 +681,10 @@ const AdminPage = () => {
     };
     
     // --- Render ---
+    if (showQrList) {
+        return <QrCodeListPage patients={masterPatients} onBack={() => setShowQrList(false)} />;
+    }
+
     return (
         <div className="space-y-8">
             {/* 患者マスタ登録・編集モーダル */}
@@ -905,6 +909,9 @@ const AdminPage = () => {
                 <div className="flex justify-between items-center mb-4 border-b pb-2">
                     <h3 className="text-xl font-semibold text-gray-800">通常患者マスタ</h3>
                     <div className="flex items-center space-x-2">
+                        <button onClick={() => setShowQrList(true)} className="bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-4 rounded-lg text-sm">
+                            QRコード一覧
+                        </button>
                         <input type="search" placeholder="患者ID, 氏名, ふりがなで検索" value={masterSearchTerm} onChange={(e) => setMasterSearchTerm(e.target.value)} className="p-2 border rounded-md text-sm"/>
                         <button title="患者マスタ追加" onClick={() => handleOpenMasterModal()} className="flex items-center space-x-2 bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" /></svg>
