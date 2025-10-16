@@ -31,13 +31,11 @@
 
 .qr-code-wrapper {
   display: flex;
-  justify-content: center;
+  justify-content: space-between; /* 両端に配置 */
   align-items: center;
-  gap: 8px; /* QRコード間の余白 */
   position: relative; /* 山折り線のための基準位置 */
   border: 1px dashed #555; /* 切り取り線 */
-  padding: 1px 0; /* 切り取り線の内側余白 (左右を0に) */
-  border-radius: 4px;
+  padding: 2px; /* 上下の余白のみ */
 }
 
 /* 山折り線 */
@@ -104,8 +102,7 @@
   }
 
   .qr-code-wrapper {
-    gap: 2px;
-    padding: 1px 0;
+    padding: 1px;
   }
 
   .qr-code-box svg {
