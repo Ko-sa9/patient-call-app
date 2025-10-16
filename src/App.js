@@ -5,6 +5,8 @@ import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDoc
 import { getFunctions } from 'firebase/functions';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import * as wanakana from 'wanakana';
+import QRCode from 'qrcode.react';
+import QrCodeListPage from './components/QrCodeListPage.js';
 
 // --- Firebase Configuration ---
 // Firebaseプロジェクトの設定情報。環境変数からAPIキーを読み込むことで、セキュリティを向上させている。
@@ -271,6 +273,9 @@ const AdminPage = () => {
     const [confirmDailyDelete, setConfirmDailyDelete] = useState({ isOpen: false, patientId: null });
     const [confirmLoadModal, setConfirmLoadModal] = useState({isOpen: false, onConfirm: () => {}});
     const [confirmClearListModal, setConfirmClearListModal] = useState({ isOpen: false });
+
+    // QRコード一覧表示関連のstate
+    const [showQrList, setShowQrList] = useState(false);
 
     // --- Firestore References ---
     const masterPatientsCollectionRef = collection(db, 'patients');
