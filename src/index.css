@@ -68,6 +68,7 @@
 .patient-id {
   font-family: monospace;
   font-size: 0.6rem; /* フォントサイズを縮小 */
+  display: none; /* ▼ 画面上では非表示にするため、この行を追加 */
 }
 
 /* --- 印刷時のみ適用されるスタイル --- */
@@ -116,6 +117,7 @@
   }
 
   .patient-id {
+    display: block; /* ▼ 印刷の時だけIDを表示させる */
     font-size: 0.6rem; /* IDフォントサイズを縮小 */
   }
 }
