@@ -36,7 +36,7 @@
   gap: 8px; /* QRコード間の余白 */
   position: relative; /* 山折り線のための基準位置 */
   border: 1px dashed #555; /* 切り取り線 */
-  padding: 4px 2px; /* 切り取り線の内側余白 */
+  padding: 4px 4px; /* 切り取り線の内側余白 */
   border-radius: 4px;
   width: fit-content; /* ▼ この行を追加 */
   margin: 0 auto;      /* ▼ この行を追加 */
