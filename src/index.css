@@ -11,25 +11,29 @@
 
 .qr-patient-item {
   border: 1px solid #ccc;
-  padding: 12px;
+  padding: 8px; /* 縮小 */
   border-radius: 8px;
   width: calc(50% - 8px); /* 画面上では2列で表示 */
   box-sizing: border-box;
   page-break-inside: avoid; /* 印刷時にアイテムがページをまたがないようにする */
+  display: flex; /* 追加 */
+  flex-direction: column; /* 追加 */
+  gap: 8px; /* 追加 */
 }
 
 .patient-name {
   font-size: 1.1rem;
   font-weight: bold;
   text-align: center;
-  margin-bottom: 8px;
+  margin-bottom: 0; /* 変更 */
   word-break: break-all;
 }
 
 .qr-code-wrapper {
   display: flex;
-  justify-content: space-between; /* 両端に配置するように変更 */
+  justify-content: center; /* 変更 */
   align-items: center;
+  gap: 0; /* 変更 */
 }
 
 .qr-code-box {
@@ -61,6 +65,7 @@
     background-color: white;
     padding: 0;
     margin: 0;
+    font-size: 10pt; /* 全体のフォントサイズを調整 */
   }
 
   main {
@@ -68,9 +73,27 @@
     padding: 0 !important;
   }
 
+  .qr-list-container {
+    gap: 4px; /* アイテム間の余白を縮小 */
+  }
+
   .qr-patient-item {
-    width: calc(50% - 8px); /* 印刷時も2列表示を維持 */
+    width: calc(33.333% - 4px); /* 印刷時は3列表示 */
     border: 1px solid #000;
-    box-sizing: border-box; /* width計算にpaddingとborderを含める */
+    box-sizing: border-box;
+    padding: 4px; /* 内側の余白を縮小 */
+  }
+
+  .patient-name {
+    font-size: 0.9rem; /* 名前フォントサイズを縮小 */
+  }
+
+  .qr-code-box svg {
+    width: 1.5cm;
+    height: 1.5cm;
+  }
+
+  .patient-id {
+    font-size: 0.7rem; /* IDフォントサイズを縮小 */
   }
 }
