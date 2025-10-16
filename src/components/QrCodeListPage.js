@@ -1,5 +1,5 @@
 import React from 'react';
-import { QRCode } from 'qrcode.react';
+import { QRCodeSVG } from 'qrcode.react';
 
 // このコンポーネントは、患者リスト(patients)と戻るボタンの関数(onBack)を受け取ります
 const QrCodeListPage = ({ patients, onBack }) => {
@@ -30,12 +30,12 @@ const QrCodeListPage = ({ patients, onBack }) => {
                 <div className="qr-code-wrapper">
                   {/* 1つ目のQRコード */}
                   <div className="qr-code-box">
-                    <QRCode value={patient.patientId} size={128} />
+                    <QRCodeSVG value={patient.patientId} size={128} />
                     <span className="patient-id">{patient.patientId}</span>
                   </div>
                   {/* 2つ目のQRコード */}
                   <div className="qr-code-box">
-                    <QRCode value={patient.patientId} size={128} />
+                    <QRCodeSVG value={patient.patientId} size={128} />
                     <span className="patient-id">{patient.patientId}</span>
                   </div>
                 </div>
