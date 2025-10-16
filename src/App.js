@@ -918,8 +918,9 @@ const AdminPage = () => {
                             onClick={() => setShowQrList(true)} 
                             className="flex items-center space-x-2 bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-3 rounded-lg transition text-sm"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v1m6 11h2m-6.5 6.5v-2.5m-2.5 2.5h-2M4 12h1m11 6h2M4 4h2v2H4zm0 8h2v2H4zm0 8h2v2H4zm8-16h2v2h-2zm0 8h2v2h-2zm0 8h2v2h-2zm8-16h2v2h-2zm0 8h2v2h-2z"/>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M1 1h4v4H1V1z"/>
+                                <path d="M2 2v2h2V2H2zM6 1h4v4H6V1zM7 2v2h2V2H7zM11 1h4v4h-4V1zm1 1v2h2V2h-2zM1 6h4v4H1V6zm1 1v2h2V7H2zM6 6h4v4H6V6zm1 1v2h2V7H7zM11 6h4v4h-4V6zm1 1v2h2V7h-2zM1 11h4v4H1v-4zm1 1v2h2v-2H2zM6 11h4v4H6v-4zm1 1v2h2v-2H7zM11 11h4v4h-4v-4zm1 1v2h2v-2h-2z"/>
                             </svg>
                         </button>
                     </div>
