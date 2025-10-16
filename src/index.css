@@ -120,4 +120,15 @@
     display: block; /* ▼ 印刷の時だけIDを表示させる */
     font-size: 0.6rem; /* IDフォントサイズを縮小 */
   }
+
+    /* 選択されていないアイテムを印刷時に非表示にする */
+  .not-selected-for-print {
+    display: none !important;
+  }
+
+  /* チェックボックス自体も印刷時には不要なので非表示にする */
+  .print-checkbox {
+    display: none !important;
+  }
+  
 }
