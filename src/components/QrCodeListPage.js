@@ -4,10 +4,10 @@ import { QRCodeSVG } from 'qrcode.react';
 
 // このコンポーネントは、患者リスト(patients)と戻るボタンの関数(onBack)を受け取ります
 const QrCodeListPage = ({ patients, onBack }) => {
-  // ▼ 選択された患者のIDを管理するためのstateを追加
+  // 選択された患者のIDを管理するためのstateを追加
   const [selectedIds, setSelectedIds] = useState([]);
 
-  // ▼ チェックボックスが変更されたときの処理
+  // チェックボックスが変更されたときの処理
   const handleSelectionChange = (patientId) => {
     setSelectedIds(prevSelectedIds => {
       // 既に選択されていたら解除、されていなければ追加
@@ -19,7 +19,7 @@ const QrCodeListPage = ({ patients, onBack }) => {
     });
   };
 
-  // ▼ 全選択/全解除の処理
+  // 全選択/全解除の処理
   const handleSelectAll = () => {
     // patientIdが存在する全ての患者IDを取得してstateにセット
     const allPatientIds = patients.filter(p => p.patientId).map(p => p.id);
@@ -34,21 +34,31 @@ const QrCodeListPage = ({ patients, onBack }) => {
       {/* 印刷時には表示しないヘッダー部分 */}
       <div className="flex justify-between items-center mb-6 no-print">
         <h2 className="text-2xl font-bold">患者QRコード一覧</h2>
-        <div>
-          {/* ▼ 全選択・全解除ボタンを追加 */}
-          <button onClick={handleSelectAll} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg mr-2">
-            すべて選択
+        
+        {/* ▼ ここからボタン部分を変更 ▼ */}
+        <div className="flex items-center space-x-2">
+          <button title="すべて選択" onClick={handleSelectAll} className="p-3 rounded-lg bg-green-600 hover:bg-green-700 text-white transition">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
           </button>
-          <button onClick={handleDeselectAll} className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg mr-4">
-            すべて解除
+          <button title="すべて解除" onClick={handleDeselectAll} className="p-3 rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white transition">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
           </button>
-          <button onClick={onBack} className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg mr-4">
-            管理画面に戻る
+          <button title="選択したものを印刷" onClick={() => window.print()} className="p-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
           </button>
-          <button onClick={() => window.print()} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">
-            選択したものを印刷
+          <button title="管理画面に戻る" onClick={onBack} className="p-3 rounded-lg bg-gray-500 hover:bg-gray-600 text-white transition">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+            </svg>
           </button>
         </div>
+        {/* ▲ ここまで ▲ */}
       </div>
 
       {/* QRコードのリスト */}
