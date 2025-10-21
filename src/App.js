@@ -6,6 +6,8 @@ import { getFunctions } from 'firebase/functions';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import * as wanakana from 'wanakana';
 import QrCodeListPage from './components/QrCodeListPage.js';
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 
 // --- Firebase Configuration ---
 // Firebaseプロジェクトの設定情報。環境変数からAPIキーを読み込むことで、セキュリティを向上させている。
@@ -1696,14 +1698,16 @@ export default function App() {
     // --- Render ---
     // AppContext.Providerでグローバルな状態を配下のコンポーネントに提供
     return (
-        <AppContext.Provider value={{ selectedFacility, setSelectedFacility, selectedDate, setSelectedDate, selectedCool, setSelectedCool }}>
-            {/* viewModeに応じて表示するコンポーネントを切り替え */}
-            {viewMode === 'login' && <RoleSelectionPage onSelectRole={handleRoleSelect} />}
-            {viewMode === 'password' && <PasswordModal onSuccess={handlePasswordSuccess} onCancel={() => setViewMode('login')} />}
-            {viewMode === 'facilitySelection' && <FacilitySelectionPage onSelectFacility={handleFacilitySelect} onGoBack={() => setViewMode('login')} />}
-            {viewMode === 'staff' && <StaffView user={user} onGoBack={handleGoBack} />}
-            {viewMode === 'public' && <PublicView user={user} onGoBack={handleGoBack} />}
-        </AppContext.Provider>
+        <DndProvider backend={HTML5Backend}>
+            <AppContext.Provider value={{ selectedFacility, setSelectedFacility, selectedDate, setSelectedDate, selectedCool, setSelectedCool }}>
+                {/* viewModeに応じて表示するコンポーネントを切り替え */}
+                {viewMode === 'login' && <RoleSelectionPage onSelectRole={handleRoleSelect} />}
+                {viewMode === 'password' && <PasswordModal onSuccess={handlePasswordSuccess} onCancel={() => setViewMode('login')} />}
+                {viewMode === 'facilitySelection' && <FacilitySelectionPage onSelectFacility={handleFacilitySelect} onGoBack={() => setViewMode('login')} />}
+                {viewMode === 'staff' && <StaffView user={user} onGoBack={handleGoBack} />}
+                {viewMode === 'public' && <PublicView user={user} onGoBack={handleGoBack} />}
+            </AppContext.Provider>
+        </DndProvider>
     );
 }
 
