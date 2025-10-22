@@ -26,7 +26,7 @@ const firebaseConfig = {
 // Firebaseの各サービスを初期化し、アプリ全体で利用できるようにする。
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app); // 認証サービス
-const db = getFirestore(app); // Firestoreデータベース
+export const db = getFirestore(app); // Firestoreデータベース
 const functions = getFunctions(app, 'us-central1'); // Cloud Functions（音声合成などで使用）
 
 // --- Helper Components & Functions ---
@@ -92,7 +92,7 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
 
 // --- App Context for Shared State ---
 // アプリ全体で共有する状態（選択中の施設、日付、クール）を管理するためのContext。
-const AppContext = createContext();
+export const AppContext = createContext();
 const FACILITIES = ["本院透析室", "坂田透析棟", "じんクリニック", "木更津クリニック"]; // 施設リスト
 
 // --- Custom Hooks ---
