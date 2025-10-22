@@ -1,13 +1,15 @@
-import React, { useState, useEffect, createContext, useContext, useRef, useCallback } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { getFunctions } from 'firebase/functions';
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
-import * as wanakana from 'wanakana';
-import QrCodeListPage from './components/QrCodeListPage.js';
-import { DndProvider } from 'react-dnd';
-import { HTML5Backend } from 'react-dnd-html5-backend';
+import React, { useState, useEffect, createContext, useContext, useRef, useCallback } from 'react';//
+import { initializeApp } from 'firebase/app';// Firebase Appの初期化
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';// Firebase Authenticationのインポート
+import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';// Firestore関連のインポート
+import { getFunctions } from 'firebase/functions';// Cloud Functionsを使用するためのインポート
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';// QRコード読み取りライブラリ
+import * as wanakana from 'wanakana';// ふりがな自動入力ライブラリ
+import QrCodeListPage from './components/QrCodeListPage.js';//
+import LayoutEditor from './components/LayoutEditor.js'; // レイアウトエディタコンポーネントをインポート
+import { DndProvider } from 'react-dnd';// react-dnd のDndProviderをインポート
+import { HTML5Backend } from 'react-dnd-html5-backend';// react-dnd-html5-backendをインポート
+
 
 // --- Firebase Configuration ---
 // Firebaseプロジェクトの設定情報。環境変数からAPIキーを読み込むことで、セキュリティを向上させている。
@@ -687,6 +689,12 @@ const AdminPage = () => {
         return <QrCodeListPage patients={masterPatients} onBack={() => setShowQrList(false)} />;
     }
 
+    // ▼ レイアウト編集モード表示のロジックを追加
+  if (isLayoutEditMode) {
+    // LayoutEditor コンポーネントを表示し、戻るボタンの処理を渡す
+    return <LayoutEditor onExit={() => setLayoutEditMode(false)} />;
+  }
+
     return (
         <div className="space-y-8">
             {/* 患者マスタ登録・編集モーダル */}
@@ -803,6 +811,20 @@ const AdminPage = () => {
                 </button>
             </div>
             
+        {/* ▼ レイアウト編集ボタンを表示するセクションを追加 ▼ */}
+        {/* selectedFacility が "入院透析室" の場合のみ表示 */}
+        {selectedFacility === "本院透析室" && (
+            <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-xl font-semibold text-gray-800 border-b pb-3 mb-4">レイアウト設定（入院透析室）</h3>
+                <button
+                    onClick={() => setLayoutEditMode(true)} // クリックで編集モードに入る
+                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg"
+                >
+                    ベッド配置を編集する
+                </button>
+            </div>
+        )}
+
             {/* 本日のリスト表示セクション */}
             <div className="bg-white p-6 rounded-lg shadow">
                  <div className="flex justify-between items-center mb-4 border-b pb-2">
