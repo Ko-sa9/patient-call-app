@@ -1,36 +1,47 @@
-import React, { useState, useEffect, useCallback, useContext } from 'react'; // ▼ useCallback をインポート
-import { useDrop } from 'react-dnd'; // ▼ useDrop をインポート
-import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore'; // (タスク5で使う)
-import { db, AppContext } from '../App'; // (タスク5で使う)
-import BedButton, { ItemTypes } from './BedButton.js'; // ▼ 作成した BedButton と ItemTypes をインポート
+import React, { useState, useEffect, useCallback, useContext } from 'react';
+import { useDrop } from 'react-dnd';
+// Firestore 関連のインポート
+import { getDoc, setDoc, doc } from 'firebase/firestore';
+// App.js から db, AppContext, LoadingSpinner をインポート
+// (App.js側で export const db = ... のように export されている必要があります)
+import { db, AppContext, LoadingSpinner } from '../App';
+import BedButton, { ItemTypes } from './BedButton.js';
 
-// 仮のベッド番号リスト
+// 入院透析室のベッド番号リスト（20床）
 const initialBedNumbers = Array.from({ length: 20 }, (_, i) => String(i + 1));
 
-// レイアウトエディタコンポーネント
+/**
+ * ベッドのレイアウトを編集するためのエディタコンポーネント
+ * @param {object} props - { onExit: 管理画面に戻るための関数 }
+ */
 const LayoutEditor = ({ onExit }) => {
-  const { selectedFacility } = useContext(AppContext);
-  const [bedPositions, setBedPositions] = useState({});
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
+  const { selectedFacility } = useContext(AppContext); // 現在選択中の施設名
+  const [bedPositions, setBedPositions] = useState({}); // ベッドの位置情報 { "1": {top, left}, ... }
+  const [isLoading, setIsLoading] = useState(true); // 読み込み中フラグ
+  const [isSaving, setIsSaving] = useState(false); // 保存中フラグ
 
-  // ▼ (タスク5用) Firestoreの参照を定義
+  // Firestoreのレイアウトドキュメントへの参照
+  // 'bedLayouts' コレクション / {施設名} ドキュメント
   const layoutDocRef = doc(db, 'bedLayouts', selectedFacility);
 
-  // ▼ (タスク5用) Firestoreからレイアウト情報を読み込む
+  // --- 1. レイアウト情報の読み込み ---
+  // コンポーネントのマウント時にFirestoreから保存されたレイアウトを読み込む
   useEffect(() => {
     const loadLayout = async () => {
       setIsLoading(true);
       try {
         const docSnap = await getDoc(layoutDocRef);
         if (docSnap.exists() && docSnap.data().positions) {
+          // 1-1. 保存されたデータがあれば、それをstateにセット
           setBedPositions(docSnap.data().positions);
+          console.log("Saved layout loaded:", docSnap.data().positions);
         } else {
-          // データがなければ初期位置を（横並びで）設定
+          // 1-2. データがなければ、初期位置を計算してセット
+          console.log("No saved layout found, using initial positions.");
           const initialPositions = {};
-          const bedsPerRow = 10;
-          const horizontalSpacing = 80;
-          const verticalSpacing = 60;
+          const bedsPerRow = 10; // 1行に並べるベッド数
+          const horizontalSpacing = 80; // 横間隔
+          const verticalSpacing = 60;   // 縦間隔
           const startLeft = 50;
           const startTop = 50;
 
@@ -46,71 +57,95 @@ const LayoutEditor = ({ onExit }) => {
         }
       } catch (error) {
         console.error("Error loading layout:", error);
+        alert('レイアウトの読み込みに失敗しました。');
       } finally {
-        setIsLoading(false);
+        setIsLoading(false); // 読み込み完了
       }
     };
-    loadLayout();
-  }, [layoutDocRef]); // layoutDocRef は selectedFacility に依存
 
-  // (タスク5用) レイアウトをFirestoreに保存する処理 (中身はまだ)
+    loadLayout();
+  }, [layoutDocRef]); // 施設名が変わると layoutDocRef が変わるので再実行
+
+  // --- 2. レイアウトの保存 ---
+  // 「レイアウトを保存」ボタンが押されたときの処理
   const handleSaveLayout = async () => {
-    console.log('保存ボタンが押されました:', bedPositions);
-    alert('レイアウトを保存しました（仮）');
+    setIsSaving(true);
+    try {
+      // Firestoreドキュメントに現在の bedPositions state を 'positions' フィールドとして保存
+      await setDoc(layoutDocRef, { positions: bedPositions });
+      alert('レイアウトを保存しました！');
+      console.log('Layout saved:', bedPositions);
+    } catch (error) {
+      console.error("Error saving layout:", error);
+      alert('レイアウトの保存に失敗しました。');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  // ▼ ベッドがドロップされたときに位置を更新する関数
+  // --- 3. ドラッグ＆ドロップ処理 ---
+
+  // ベッドがドロップされたときに state を更新する関数
   const moveBed = useCallback((bedNumber, left, top) => {
-    // bedPositions state を更新して、ベッドの新しい位置を記録
     setBedPositions((prevPositions) => ({
       ...prevPositions,
-      [bedNumber]: { left, top },
+      [bedNumber]: { left, top }, // 特定のベッド番号の位置だけを更新
     }));
-  }, []); // 空の依存配列
+  }, []); // この関数自体は再生成不要
 
-  // ▼ ドロップエリアの設定 (useDrop フック)
+  // ドロップエリア（ベッドを配置する背景エリア）の設定
   const [, drop] = useDrop(() => ({
-    accept: ItemTypes.BED, // 1. BedButton からのドロップ(type: 'bed')のみ受け付ける
-    drop(item, monitor) { // 2. ドロップされた時の処理
-      // item: BedButtonのuseDragで設定した { bedNumber, left, top }
+    accept: ItemTypes.BED, // BedButton.js で定義した 'bed' タイプのみ受け入れる
+    drop(item, monitor) {
+      // item: ドラッグ開始時に BedButton から渡された情報 { bedNumber, left, top }
       
-      // ドラッグ開始位置からの移動量 (delta) を取得
+      // ドラッグ開始位置からの移動差分 (delta) を取得
       const delta = monitor.getDifferenceFromInitialOffset();
       
-      // 元の位置に移動量を足して、新しい位置を計算
+      // 新しい左上座標を計算 (元の位置 + 移動差分)
       const newLeft = Math.round(item.left + delta.x);
       const newTop = Math.round(item.top + delta.y);
 
-      // moveBed関数を呼び出してstateを更新
+      // state を更新してベッドを移動させる
       moveBed(item.bedNumber, newLeft, newTop);
       return undefined;
     },
-  }), [moveBed]); // 依存配列に moveBed を追加
+  }), [moveBed]); // moveBed が変更されたら（通常はない）このフックも再計算
 
+  // --- レンダリング ---
   if (isLoading) {
     return <LoadingSpinner text="レイアウト情報を読み込み中..." />;
   }
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
+      {/* ヘッダー：タイトルとボタン類 */}
       <div className="flex justify-between items-center mb-6 border-b pb-3 no-print">
         <h2 className="text-2xl font-bold">ベッドレイアウト編集（{selectedFacility}）</h2>
         <div>
-          <button onClick={handleSaveLayout} disabled={isSaving} className={`bg-blue-600 ...`}>
+          <button 
+            onClick={handleSaveLayout} 
+            disabled={isSaving} // 保存中はボタンを無効化
+            className={`bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg mr-4 ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
             {isSaving ? '保存中...' : 'レイアウトを保存'}
           </button>
-          <button onClick={onExit} disabled={isSaving} className={`bg-gray-500 ...`}>
+          <button 
+            onClick={onExit} 
+            disabled={isSaving} // 保存中は戻るボタンも無効化
+            className={`bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
             管理画面に戻る
           </button>
         </div>
       </div>
 
-      {/* ▼ ドラッグ＆ドロップエリア (ref={drop} を適用) */}
+      {/* ドロップエリア (ref={drop} でドロップ先として登録) */}
       <div 
         ref={drop} 
         className="relative border-2 border-dashed border-gray-400 h-[600px] bg-gray-50 rounded-md overflow-hidden"
       >
-        {/* ▼ 表示を BedButton コンポーネントに置き換え */}
+        {/* bedPositions state に基づいて BedButton コンポーネントを描画 */}
         {Object.keys(bedPositions).map((bedNumber) => (
           <BedButton
             key={bedNumber}
