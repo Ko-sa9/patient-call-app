@@ -1280,7 +1280,7 @@ const StaffPage = () => {
 };
 
 // QR/バーコードスキャナーのモーダルコンポーネント
-const QrScannerModal = ({ onClose, onScanSuccess }) => {
+export const QrScannerModal = ({ onClose, onScanSuccess }) => {
     const [scanResult, setScanResult] = useState(null); // スキャン結果のメッセージ
     const isProcessingRef = useRef(false); // 短時間での連続スキャンを防ぐためのフラグ
     
