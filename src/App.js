@@ -5,8 +5,9 @@ import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDoc
 import { getFunctions } from 'firebase/functions';// Cloud Functionsを使用するためのインポート
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';// QRコード読み取りライブラリ
 import * as wanakana from 'wanakana';// ふりがな自動入力ライブラリ
-import QrCodeListPage from './components/QrCodeListPage.js';//
+import QrCodeListPage from './components/QrCodeListPage.js';// QRコード一覧ページコンポーネントをインポート
 import LayoutEditor from './components/LayoutEditor.js'; // レイアウトエディタコンポーネントをインポート
+import InpatientView from './components/InpatientView.js'; // 入院透析室コンポーネントをインポート
 import { DndProvider } from 'react-dnd';// react-dnd のDndProviderをインポート
 import { HTML5Backend } from 'react-dnd-html5-backend';// react-dnd-html5-backendをインポート
 
@@ -93,7 +94,7 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
 // --- App Context for Shared State ---
 // アプリ全体で共有する状態（選択中の施設、日付、クール）を管理するためのContext。
 export const AppContext = createContext();
-const FACILITIES = ["本院透析室", "坂田透析棟", "じんクリニック", "木更津クリニック"]; // 施設リスト
+const FACILITIES = ["本院透析室", "入院透析室","坂田透析棟", "じんクリニック", "木更津クリニック"]; // 施設リスト
 
 // --- Custom Hooks ---
 
@@ -1484,7 +1485,7 @@ const GlobalControls = ({ hideCoolSelector = false }) => {
 };
 
 // アプリ全体のレイアウトを定義するコンポーネント（ヘッダー、メインコンテンツ、フッター）。
-const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) => (
+export const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) => (
     <div className="min-h-screen bg-gray-50 font-sans">
         <nav className="bg-white shadow-md p-3 sm:p-4 mb-8 sticky top-0 z-40">
             <div className="max-w-7xl mx-auto px-4">
@@ -1726,7 +1727,12 @@ export default function App() {
                 {viewMode === 'login' && <RoleSelectionPage onSelectRole={handleRoleSelect} />}
                 {viewMode === 'password' && <PasswordModal onSuccess={handlePasswordSuccess} onCancel={() => setViewMode('login')} />}
                 {viewMode === 'facilitySelection' && <FacilitySelectionPage onSelectFacility={handleFacilitySelect} onGoBack={() => setViewMode('login')} />}
-                {viewMode === 'staff' && <StaffView user={user} onGoBack={handleGoBack} />}
+                {viewMode === 'staff' && selectedFacility === "入院透析室" && (
+                  <InpatientView user={user} onGoBack={handleGoBack} />
+                 )}
+                {viewMode === 'staff' && selectedFacility !== "入院透析室" && (
+                    <StaffView user={user} onGoBack={handleGoBack} />
+                )}
                 {viewMode === 'public' && <PublicView user={user} onGoBack={handleGoBack} />}
             </AppContext.Provider>
         </DndProvider>
