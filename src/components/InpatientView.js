@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
 // App.jsから主要コンポーネントと変数をインポート
-import { AppLayout, AppContext, db, LoadingSpinner, QrScannerModal } from '../App'; 
+import { AppLayout, AppContext, db, LoadingSpinner, QrScannerModal } from '../App.js';
 import LayoutEditor from './LayoutEditor.js'; // レイアウトエディタ
 import BedButton from './BedButton.js'; // ベッドボタン
 // Firestoreの関数: doc(参照作成), onSnapshot(リアルタイム監視), updateDoc(更新), setDoc(新規作成/上書き), getDoc(単一取得)
