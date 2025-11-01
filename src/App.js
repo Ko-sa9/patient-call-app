@@ -2040,6 +2040,7 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, statusDocRef }) => {
     </div>
   );
 };
+
 // --- 2. スタッフ画面 (InpatientStaffPage) ---
 // 【★修正★】 治療中 ⇔ 送迎可能 のトグル（切り替え）機能を追加
 const InpatientStaffPage = ({ bedLayout, bedStatuses, statusDocRef }) => {
@@ -2131,7 +2132,10 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, statusDocRef }) => {
 
       {/* ベッドレイアウト表示エリア */}
       <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-hidden">
-        {/* bedLayout が読み込めてから表示 */}
+        {/* ★★★【バグ修正】★★★
+             * 以前のコードでは !bedLayout (bedLayoutが無い時) になっていましたが、
+             * bedLayout (bedLayoutが有る時) に修正します。
+             */}
         {bedLayout && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
           // bedStatuses から該当ベッドの状態を取得 (なければ'治療中'扱い)
           const status = bedStatuses[bedNumber] || '治療中';
