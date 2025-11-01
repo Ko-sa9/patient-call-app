@@ -11,6 +11,8 @@
     "html5-qrcode": "^2.3.8",
     "qrcode.react": "^4.2.0",
     "react": "^19.1.1",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "^19.1.1",
     "react-scripts": "5.0.1",
     "wanakana": "^5.3.1",
