@@ -1,11 +1,13 @@
 import React, { useState, useEffect, createContext, useContext, useRef, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch, getDoc, setDoc } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import * as wanakana from 'wanakana';
 import QrCodeListPage from './components/QrCodeListPage.js';
+import { DndProvider, useDrag, useDrop } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 
 // --- Firebase Configuration ---
 // Firebaseプロジェクトの設定情報。環境変数からAPIキーを読み込むことで、セキュリティを向上させている。
@@ -89,7 +91,7 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
 // --- App Context for Shared State ---
 // アプリ全体で共有する状態（選択中の施設、日付、クール）を管理するためのContext。
 const AppContext = createContext();
-const FACILITIES = ["本院透析室", "坂田透析棟", "じんクリニック", "木更津クリニック"]; // 施設リスト
+const FACILITIES = ["本院透析室","入院透析室", "坂田透析棟", "じんクリニック", "木更津クリニック"]; // 施設リスト
 
 // --- Custom Hooks ---
 
@@ -100,8 +102,9 @@ const useDailyList = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // 依存する値がなければ何もしない
-        if (!selectedFacility || !selectedDate || !selectedCool) {
+         // 【修正点】 入院透析室の場合はこのフックを動作させない
+        if (selectedFacility === "入院透析室" || !selectedFacility || !selectedDate || !selectedCool) {
+            setDailyList([]);
             setLoading(false);
             return;
         }
@@ -137,9 +140,11 @@ const useAllDayPatients = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!selectedFacility || !selectedDate) {
-            setLoading(false);
-            return;
+     // 【修正点】 入院透析室の場合はこのフックを動作させない
+         if (selectedFacility === "入院透析室" || !selectedFacility || !selectedDate) {
+         setAllPatients([]);
+         setLoading(false);
+          return;
         }
         setLoading(true);
 
@@ -1627,6 +1632,588 @@ const RoleSelectionPage = ({ onSelectRole }) => {
     );
 };
 
+// ==================================================================
+// --- 【タスク3〜7】 入院透析室用コンポーネント群 (ここから新規追加) ---
+// ==================================================================
+
+const totalBeds = 20; // 入院透析室の総ベッド数
+
+// --- 【タスク3】 BedButton & LayoutEditor ---
+
+// ドラッグ可能なアイテムの種別を定義
+const ItemTypes = {
+  BED: 'bed',
+};
+
+// ドラッグ可能なベッドボタンのコンポーネント (LayoutEditor専用)
+const BedButton = ({ bedNumber, left, top }) => {
+  // useDrag フックを使用
+  const [{ isDragging }, drag] = useDrag(() => ({
+    type: ItemTypes.BED, // アイテムタイプを設定
+    item: { bedNumber, left, top }, // ドラッグ時に渡すデータ
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(), // ドラッグ中かどうかの状態を取得
+    }),
+  }), [bedNumber, left, top]); // 依存配列
+
+  // ドラッグ中は透明度を下げる
+  const opacity = isDragging ? 0.4 : 1;
+
+  return (
+    <div
+      ref={drag} // DOM要素にドラッグハンドルを関連付け
+      style={{ position: 'absolute', left, top, opacity, cursor: 'move' }} // 絶対配置とカーソル
+      className="p-3 bg-blue-500 text-white rounded-lg font-bold shadow-md w-20 h-16 flex justify-center items-center"
+    >
+      {bedNumber}
+    </div>
+  );
+};
+
+// ベッド配置をD&Dで編集し、Firestoreに保存/読み込みするエディタ
+const LayoutEditor = ({ onSaveComplete }) => {
+  const { selectedFacility } = useContext(AppContext); // 施設情報をContextから取得
+  const [bedPositions, setBedPositions] = useState({}); // ベッドの座標 { "1": {top, left}, ... }
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Firestoreのドキュメント参照
+  const layoutDocRef = doc(db, 'bedLayouts', selectedFacility);
+
+  // --- 1. レイアウトの読み込み ---
+  useEffect(() => {
+    const fetchLayout = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const docSnap = await getDoc(layoutDocRef);
+        if (docSnap.exists() && docSnap.data().positions) {
+          // データがあればそれを読み込む
+          setBedPositions(docSnap.data().positions);
+        } else {
+          // データがなければ初期レイアウトを生成 (20床を10x2列で配置)
+          const initialPositions = {};
+          for (let i = 1; i <= totalBeds; i++) {
+            const row = i <= 10 ? 0 : 1; // 1-10床が1行目, 11-20床が2行目
+            const col = i <= 10 ? i - 1 : i - 11;
+            initialPositions[i.toString()] = {
+              top: 50 + row * 100, // 行間のマージン
+              left: 10 + col * 90, // 列間のマージン
+            };
+          }
+          setBedPositions(initialPositions);
+        }
+      } catch (err) {
+        console.error("レイアウトの読み込みに失敗:", err);
+        setError("読み込みに失敗しました。");
+      }
+      setLoading(false);
+    };
+    fetchLayout();
+  }, [layoutDocRef]); // layoutDocRefは不変だが、明示的に依存
+
+  // --- 2. ドロップ処理 ---
+  // ベッドがドロップされた時の座標更新ロジック
+  const moveBed = useCallback((bedNumber, left, top) => {
+    setBedPositions((prev) => ({
+      ...prev,
+      [bedNumber]: { left, top },
+    }));
+  }, []);
+
+  // useDrop フックでドロップエリアを設定
+  const [, drop] = useDrop(() => ({
+    accept: ItemTypes.BED, // BedButtonからのドロップのみ受け入れる
+    drop(item, monitor) {
+      // ドラッグ開始時からの差分を取得
+      const delta = monitor.getDifferenceFromInitialOffset();
+      if (!delta) return; // 差分がなければ何もしない
+
+      // 新しい座標を計算
+      const newLeft = Math.round(item.left + delta.x);
+      const newTop = Math.round(item.top + delta.y);
+      
+      // 座標を更新
+      moveBed(item.bedNumber, newLeft, newTop);
+    },
+  }), [moveBed]);
+
+  // --- 3. レイアウトの保存 ---
+  const handleSaveLayout = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      // Firestoreに現在の座標(bedPositions)を保存
+      await setDoc(layoutDocRef, { positions: bedPositions });
+      if (onSaveComplete) onSaveComplete(); // 保存完了を親に通知
+    } catch (err) {
+      console.error("レイアウトの保存に失敗:", err);
+      setError("保存に失敗しました。");
+    }
+    setSaving(false);
+  };
+
+  // --- 4. レンダリング ---
+  if (loading) return <LoadingSpinner text="レイアウトを読み込み中..." />;
+
+  return (
+    <div className="p-4 border rounded-lg bg-gray-50">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-bold">ベッド配置エディタ</h3>
+        <button
+          onClick={handleSaveLayout}
+          disabled={saving}
+          className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition disabled:bg-gray-400"
+        >
+          {saving ? "保存中..." : "レイアウトを保存"}
+        </button>
+      </div>
+      {error && <p className="text-red-500 text-center mb-4">{error}</p>}
+      <p className="text-sm text-gray-600 mb-4">ベッド（青い箱）をドラッグして配置を調整し、「レイアウトを保存」ボタンを押してください。</p>
+      
+      {/* ドロップエリア (ref={drop}) */}
+      <div ref={drop} className="relative w-full h-[400px] bg-white border-2 border-dashed border-gray-400 rounded-lg overflow-hidden">
+        {Object.entries(bedPositions).map(([bedNumber, { top, left }]) => (
+          <BedButton
+            key={bedNumber}
+            bedNumber={bedNumber}
+            left={left}
+            top={top}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// --- 【タスク4】 InpatientView 関連 ---
+
+// --- 共通カスタムフック (レイアウトとステータスのリアルタイム購読) ---
+const useBedData = () => {
+  const { selectedFacility, selectedDate } = useContext(AppContext);
+  const [bedLayout, setBedLayout] = useState(null); // 座標データ
+  const [bedStatuses, setBedStatuses] = useState(null); // 状態データ
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Firestoreのドキュメント参照
+  const layoutDocRef = doc(db, 'bedLayouts', selectedFacility);
+  const statusDocId = `${selectedFacility}_${selectedDate}`;
+  const statusDocRef = doc(db, 'bedStatuses', statusDocId);
+
+  // 【タスク4】 レイアウト(bedLayouts)の購読
+  useEffect(() => {
+    setLoading(true); // 日付や施設が変わるたびにローディング開始
+    const unsubscribe = onSnapshot(layoutDocRef, (docSnap) => {
+      if (docSnap.exists() && docSnap.data().positions) {
+        setBedLayout(docSnap.data().positions);
+      } else {
+        // レイアウト未設定の場合、空のオブジェクトをセット
+        // (LayoutEditor側で初期レイアウトが生成される)
+        setBedLayout({}); 
+      }
+      // レイアウトが読み込めても、ステータスが読み込めるまでローディングは継続
+    }, (err) => {
+      console.error("レイアウトの購読に失敗:", err);
+      setError("レイアウトの読み込みに失敗しました。");
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [layoutDocRef]); // layoutDocRefは selectedFacility に依存
+
+  // 【タスク4】 状態(bedStatuses)の購読
+  useEffect(() => {
+    setLoading(true); // 日付や施設が変わるたびにローディング開始
+    const unsubscribe = onSnapshot(statusDocRef, async (docSnap) => {
+      if (docSnap.exists()) {
+        setBedStatuses(docSnap.data());
+      } else {
+        // 【タスク4】 その日初回の場合、全ベッドを「治療中」で初期化
+        console.log("本日のステータスドキュメントが存在しないため、初期化します。");
+        const initialStatuses = {};
+        for (let i = 1; i <= totalBeds; i++) {
+          initialStatuses[i.toString()] = "治療中";
+        }
+        try {
+          await setDoc(statusDocRef, initialStatuses);
+          setBedStatuses(initialStatuses);
+        } catch (err) {
+          console.error("ステータスの初期化に失敗:", err);
+          setError("ステータスの初期化に失敗しました。");
+        }
+      }
+      // ステータスが読み込めたらローディング終了（レイアウトは別）
+      setLoading(false);
+    }, (err) => {
+      console.error("ステータスの購読に失敗:", err);
+      setError("ステータスの読み込みに失敗しました。");
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [statusDocRef]); // statusDocRefは selectedFacility, selectedDate に依存
+
+  // bedLayout と bedStatuses の両方が読み込めるまで loading = true とする
+  const isLoading = loading || bedLayout === null || bedStatuses === null;
+
+  return { bedLayout, bedStatuses, statusDocRef, loading: isLoading, error };
+};
+
+// --- ベッドの状態に応じたスタイルを返すヘルパー関数 ---
+const getBedStatusStyle = (status) => {
+  switch (status) {
+    case '送迎可能': // 黄色点滅
+      return 'bg-yellow-400 text-black animate-pulse';
+    case '連絡済': // グレー
+      return 'bg-gray-400 text-white';
+    case '治療中': // 青
+    default:
+      return 'bg-blue-500 text-white';
+  }
+};
+
+// --- 1. 管理/モニター画面 (InpatientAdminPage) ---
+// 【タスク4, 5, 6】
+const InpatientAdminPage = () => {
+  const { bedLayout, bedStatuses, statusDocRef, loading, error } = useBedData();
+  const [isLayoutEditMode, setIsLayoutEditMode] = useState(false); // レイアウト編集モード
+
+  // --- 【タスク6】 音声通知機能 (MonitorPageから移植・改変) ---
+  const prevStatusesRef = useRef(null); // 前回のベッド状態
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const speechQueueRef = useRef([]); // 読み上げ待機キュー (ベッド番号のキュー)
+  const currentAudioRef = useRef(null);
+  const nextSpeechTimerRef = useRef(null);
+
+  const speakNextInQueue = useCallback(() => {
+    if (nextSpeechTimerRef.current) {
+      clearTimeout(nextSpeechTimerRef.current);
+      nextSpeechTimerRef.current = null;
+    }
+    if (speechQueueRef.current.length === 0) {
+      setIsSpeaking(false);
+      return;
+    }
+
+    setIsSpeaking(true);
+    const bedNumber = speechQueueRef.current.shift(); // キューからベッド番号を取り出す
+    
+    // 【タスク6】 読み上げテキストの変更
+    const textToSpeak = `${bedNumber}番ベッド、送迎可能です。`;
+    // Cloud Functionsのエンドポイント（既存のMonitorPageと同じもの）
+    const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app";
+
+    fetch(functionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: textToSpeak }),
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.audioContent) {
+        const audio = new Audio("data:audio/mp3;base64," + data.audioContent);
+        currentAudioRef.current = audio;
+        audio.play();
+        audio.onended = () => {
+          currentAudioRef.current = null;
+          // 1秒待って次のキューへ
+          nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000);
+        };
+      } else {
+        throw new Error(data.error || 'Audio content not found');
+      }
+    })
+    .catch((error) => {
+      console.error("Speech synthesis failed:", error);
+      currentAudioRef.current = null;
+      // エラー時も1秒待って次へ
+      nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000);
+    });
+  }, []); // 依存配列は空
+
+  // 【タスク6】 bedStatuses を監視し、音声キューを更新
+  useEffect(() => {
+    if (!bedStatuses) return; // ステータスが読み込まれていない場合は何もしない
+    const prevStatuses = prevStatusesRef.current; // 前回の状態を取得
+
+    if (prevStatuses) { // 初回実行時(prevStatuses=null)は比較しない
+      const newCalls = [];
+      // 全ベッドをループして状態変化をチェック
+      for (let i = 1; i <= totalBeds; i++) {
+        const bedNumStr = i.toString();
+        const currentStatus = bedStatuses[bedNumStr];
+        const previousStatus = prevStatuses[bedNumStr];
+        
+        // 「治療中」から「送迎可能」に変わったベッドを検出
+        if (previousStatus === '治療中' && currentStatus === '送迎可能') {
+          newCalls.push(bedNumStr);
+        }
+      }
+
+      if (newCalls.length > 0) {
+        // キューにソートして追加（ベッド番号順に読み上げるため）
+        newCalls.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        speechQueueRef.current.push(...newCalls);
+        if (!isSpeaking) {
+          speakNextInQueue(); // 再生中でなければ再生開始
+        }
+      }
+    }
+    
+    // 現在の状態を次回の比較用に保存
+    prevStatusesRef.current = bedStatuses;
+  }, [bedStatuses, isSpeaking, speakNextInQueue]);
+  // --- 音声通知機能 ここまで ---
+
+  // 【タスク5】 クラーク操作 (送迎可能 -> 連絡済 に変更)
+  const handleBedReset = async (bedNumber) => {
+    if (!bedStatuses || !statusDocRef) return;
+    const currentStatus = bedStatuses[bedNumber];
+    
+    // 「送迎可能」のベッドのみ操作可能
+    if (currentStatus === '送迎可能') {
+      try {
+        // フィールド名をキーとして更新 (例: { "5": "連絡済" })
+        await updateDoc(statusDocRef, {
+          [bedNumber]: "連絡済"
+        });
+      } catch (err) {
+        console.error("ステータスのリセットに失敗:", err);
+        alert("更新に失敗しました。");
+      }
+    }
+  };
+
+  // --- レンダリング ---
+  if (loading) {
+    return <LoadingSpinner text="入院透析室モニターを読み込み中..." />;
+  }
+  if (error) {
+    return <p className="text-red-500 text-center">{error}</p>;
+  }
+  // bedLayoutが空オブジェクト（未設定）の場合のハンドリング
+  const isLayoutUnset = Object.keys(bedLayout).length === 0;
+
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow">
+        <h2 className="text-2xl font-bold">管理・モニター画面</h2>
+        <button
+          onClick={() => setIsLayoutEditMode(!isLayoutEditMode)}
+          className={`font-bold py-2 px-6 rounded-lg transition ${
+            isLayoutEditMode ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-500 hover:bg-yellow-600'
+          } text-white`}
+        >
+          {isLayoutEditMode ? "編集を終了" : "ベッド配置を編集"}
+        </button>
+      </div>
+
+      {/* 【タスク4】 レイアウト編集モードの表示切り替え */}
+      {isLayoutEditMode ? (
+        <LayoutEditor onSaveComplete={() => setIsLayoutEditMode(false)} />
+      ) : (
+        <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-hidden">
+          {/* レイアウトが未設定の場合のメッセージ */}
+          {isLayoutUnset && (
+            <div className="text-center text-gray-500">
+              <p>ベッド配置がまだ設定されていません。</p>
+              <p>「ベッド配置を編集」ボタンから初期レイアウトを設定・保存してください。</p>
+            </div>
+          )}
+          {/* ベッドの絶対配置 */}
+          {!isLayoutUnset && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
+            const status = bedStatuses[bedNumber] || '治療中';
+            const statusStyle = getBedStatusStyle(status);
+            
+            return (
+              <button
+                key={bedNumber}
+                style={{ position: 'absolute', top, left }}
+                className={`p-3 rounded-lg font-bold shadow-md w-20 h-16 flex justify-center items-center transition-colors duration-300 ${statusStyle} ${status === '送迎可能' ? 'cursor-pointer' : 'cursor-default'}`}
+                onClick={() => handleBedReset(bedNumber)} // 【タスク5】
+                disabled={status !== '送迎可能'} // 送迎可能以外は押せない
+              >
+                {bedNumber}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      
+      {/* 【タスク6】 音声再生中のインジケーター */}
+      {isSpeaking && 
+          <div className="fixed bottom-5 right-5 bg-yellow-400 text-black font-bold py-2 px-4 rounded-full shadow-lg flex items-center z-50">
+              <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              音声再生中...
+          </div>
+      }
+    </div>
+  );
+};
+
+// --- 2. スタッフ画面 (InpatientStaffPage) ---
+// 【タスク4, 5, 7】
+const InpatientStaffPage = () => {
+  const { bedLayout, bedStatuses, statusDocRef, loading, error } = useBedData();
+  const [isScannerOpen, setScannerOpen] = useState(false); // 【タスク7】 QRスキャナモーダル
+
+  // 【タスク5】 スタッフ操作 (治療中 -> 送迎可能 に変更)
+  const handleBedTap = useCallback(async (bedNumber) => {
+    if (!bedStatuses || !statusDocRef) return;
+    // bedNumberが文字列であることを確認
+    const bedNumStr = bedNumber.toString();
+    const currentStatus = bedStatuses[bedNumStr];
+    
+    // 「治療中」のベッドのみ操作可能
+    if (currentStatus === '治療中') {
+      try {
+        await updateDoc(statusDocRef, {
+          [bedNumStr]: "送迎可能"
+        });
+      } catch (err) {
+        console.error("ステータスの更新に失敗:", err);
+        alert("更新に失敗しました。");
+      }
+    }
+  }, [bedStatuses, statusDocRef]); // 依存配列に最新のstateとrefを含める
+
+  // 【タスク7】 QRスキャン成功時のコールバック
+  const handleScanSuccess = useCallback((decodedText) => {
+    // スキャンされたテキストが 1～20 の数字であるか検証
+    const bedNumber = parseInt(decodedText, 10);
+    if (bedNumber >= 1 && bedNumber <= totalBeds) {
+      const bedNumStr = bedNumber.toString();
+      if (bedStatuses && bedStatuses[bedNumStr] === '治療中') {
+        // 治療中であれば、送迎可能に変更
+        handleBedTap(bedNumStr);
+        return { success: true, message: `${bedNumStr}番ベッドを「送迎可能」にしました。` };
+      } else if (bedStatuses && bedStatuses[bedNumStr] !== '治療中') {
+        return { success: false, message: `${bedNumStr}番ベッドは既に操作済みです。` };
+      } else {
+        return { success: false, message: "ベッドの状態を取得できません。" };
+      }
+    } else {
+      return { success: false, message: `無効なコードです: ${decodedText}` };
+    }
+  }, [bedStatuses, handleBedTap]); // handleBedTapも依存配列に
+
+  // --- レンダリング ---
+  if (loading) {
+    return <LoadingSpinner text="入院透析室スタッフ画面を読み込み中..." />;
+  }
+  if (error) {
+    return <p className="text-red-500 text-center">{error}</p>;
+  }
+  // bedLayoutが空オブジェクト（未設定）の場合のハンドリング
+  const isLayoutUnset = Object.keys(bedLayout).length === 0;
+
+  return (
+    <div>
+      {/* 【タスク7】 QRスキャナーモーダル */}
+      {isScannerOpen && (
+        <QrScannerModal
+          onClose={() => setScannerOpen(false)}
+          onScanSuccess={handleScanSuccess}
+        />
+      )}
+      
+      <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow mb-6">
+        <h2 className="text-2xl font-bold">スタッフ操作画面</h2>
+        {/* 【タスク7】 QRスキャンボタン */}
+        <button
+          onClick={() => setScannerOpen(true)}
+          title="QRコードで呼び出し"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold p-3 rounded-lg transition"
+G        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </button>
+      </div>
+
+      <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-hidden">
+        {/* レイアウトが未設定の場合のメッセージ */}
+        {isLayoutUnset && (
+          <div className="text-center text-gray-500">
+            <p>ベッド配置がまだ設定されていません。</p>
+            <p>管理者画面でレイアウトを設定してください。</p>
+          </div>
+        )}
+        {/* ベッドの絶対配置 */}
+        {!isLayoutUnset && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
+          const status = bedStatuses[bedNumber] || '治療中';
+          const statusStyle = getBedStatusStyle(status);
+          // 【タスク4】 治療中以外は操作不可
+          const isDisabled = status !== '治療中';
+
+          return (
+            <button
+              key={bedNumber}
+              style={{ position: 'absolute', top, left }}
+              className={`p-3 rounded-lg font-bold shadow-md w-20 h-16 flex justify-center items-center transition-colors duration-300 ${statusStyle} ${isDisabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:brightness-110'}`}
+              onClick={() => handleBedTap(bedNumber)} // 【タスク5】
+              disabled={isDisabled}
+            >
+              {bedNumber}
+            </button>
+            );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// --- 3. 親コンポーネント (InpatientView) ---
+// 【タスク4】
+const InpatientView = ({ user, onGoBack }) => {
+  const [currentPage, setCurrentPage] = useState('admin'); // 'admin' or 'staff'
+  // 入院透析室ではクール選択は不要
+  const hideCoolSelector = true;
+
+  // タブ切り替えボタン
+  const NavButton = ({ page, label }) => (
+    <button 
+      onClick={() => setCurrentPage(page)} 
+      className={`px-3 py-2 sm:px-4 rounded-lg font-medium transition duration-200 text-sm sm:text-base ${ currentPage === page ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-200'}`}
+    >
+      {label}
+    </button>
+  );
+
+  // 表示するページコンポーネントを決定
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'admin': return <InpatientAdminPage />;
+      case 'staff': return <InpatientStaffPage />;
+      default: return <InpatientAdminPage />;
+    }
+  };
+
+  return (
+    <AppLayout 
+      user={user} 
+      onGoBack={onGoBack} 
+      hideCoolSelector={hideCoolSelector} 
+      navButtons={
+        <>
+          <NavButton page="admin" label="管理/モニター" />
+          <NavButton page="staff" label="スタッフ操作" />
+        </>
+      }
+    >
+      {renderPage()}
+    </AppLayout>
+  );
+};
+
+// ==================================================================
+// --- (入院透析室用コンポーネント群 ここまで) ---
+// ==================================================================
 
 // --- Main App ---
 // アプリケーションのルートコンポーネント。
@@ -1696,14 +2283,25 @@ export default function App() {
     // --- Render ---
     // AppContext.Providerでグローバルな状態を配下のコンポーネントに提供
     return (
-        <AppContext.Provider value={{ selectedFacility, setSelectedFacility, selectedDate, setSelectedDate, selectedCool, setSelectedCool }}>
-            {/* viewModeに応じて表示するコンポーネントを切り替え */}
-            {viewMode === 'login' && <RoleSelectionPage onSelectRole={handleRoleSelect} />}
-            {viewMode === 'password' && <PasswordModal onSuccess={handlePasswordSuccess} onCancel={() => setViewMode('login')} />}
-            {viewMode === 'facilitySelection' && <FacilitySelectionPage onSelectFacility={handleFacilitySelect} onGoBack={() => setViewMode('login')} />}
-            {viewMode === 'staff' && <StaffView user={user} onGoBack={handleGoBack} />}
-            {viewMode === 'public' && <PublicView user={user} onGoBack={handleGoBack} />}
-        </AppContext.Provider>
-    );
+        <DndProvider backend={HTML5Backend}>
+            <AppContext.Provider value={{ selectedFacility, setSelectedFacility, selectedDate, setSelectedDate, selectedCool, setSelectedCool }}>                
+                {/* --- 画面切り替えロジック --- */}
+                {viewMode === 'login' && <RoleSelectionPage onSelectRole={handleRoleSelect} />}
+                {viewMode === 'password' && <PasswordModal onSuccess={handlePasswordSuccess} onCancel={() => setViewMode('login')} />}
+                {viewMode === 'facilitySelection' && <FacilitySelectionPage onSelectFacility={handleFacilitySelect} onGoBack={() => setViewMode('login')} />}
+                {/* 【タスク8】 スタッフ用ビューの条件分岐 */}
+                {viewMode === 'staff' && selectedFacility === "入院透析室" && (
+                  <InpatientView user={user} onGoBack={handleGoBack} />
+                )}
+                {viewMode === 'staff' && selectedFacility !== "入院透析室" && (
+                  <StaffView user={user} onGoBack={handleGoBack} />
+                )}
+                {/* --- ここまで --- */}
+                
+                {viewMode === 'public' && <PublicView user={user} onGoBack={handleGoBack} />}
+            
+            </AppContext.Provider>
+        </DndProvider>
+    );
 }
 
