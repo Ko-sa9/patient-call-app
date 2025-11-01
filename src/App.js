@@ -1850,35 +1850,35 @@ const getBedStatusStyle = (status) => {
 };
 
 // --- 1. 管理/モニター画面 (InpatientAdminPage) ---
-// 【タスク4, 5, 6】
-const InpatientAdminPage = () => {
-  const { bedLayout, bedStatuses, statusDocRef, loading, error } = useBedData();
+// 【★修正★】 すべての状態をクリックで循環できるように変更
+const InpatientAdminPage = ({ bedLayout, bedStatuses, statusDocRef }) => {
+  // データは親の InpatientView から props で受け取る
   const [isLayoutEditMode, setIsLayoutEditMode] = useState(false); // レイアウト編集モード
 
-  // --- 【タスク6】 音声通知機能 (MonitorPageから移植・改変) ---
+  // --- 【タスク6】 音声通知機能 ---
   const prevStatusesRef = useRef(null); // 前回のベッド状態
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const speechQueueRef = useRef([]); // 読み上げ待機キュー (ベッド番号のキュー)
-  const currentAudioRef = useRef(null);
-  const nextSpeechTimerRef = useRef(null);
+  const [isSpeaking, setIsSpeaking] = useState(false); // 再生中フラグ
+  const speechQueueRef = useRef([]); // 読み上げ待機キュー
+  const currentAudioRef = useRef(null); // 現在再生中のAudioオブジェクト
+  const nextSpeechTimerRef = useRef(null); // 次の再生までのタイマー
 
+  // キューから取り出して音声再生を実行する関数
   const speakNextInQueue = useCallback(() => {
     if (nextSpeechTimerRef.current) {
       clearTimeout(nextSpeechTimerRef.current);
       nextSpeechTimerRef.current = null;
     }
     if (speechQueueRef.current.length === 0) {
-      setIsSpeaking(false);
+      setIsSpeaking(false); // キューが空なら再生終了
       return;
     }
 
     setIsSpeaking(true);
     const bedNumber = speechQueueRef.current.shift(); // キューからベッド番号を取り出す
     
-    // 【タスク6】 読み上げテキストの変更
+    // 仕様通り「〇番ベッド、送迎可能です。」というテキスト
     const textToSpeak = `${bedNumber}番ベッド、送迎可能です。`;
-    // Cloud Functionsのエンドポイント（既存のMonitorPageと同じもの）
-    const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app";
+    const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app"; // Cloud Functionsのエンドポイント
 
     fetch(functionUrl, {
       method: 'POST',
@@ -1906,71 +1906,79 @@ const InpatientAdminPage = () => {
       // エラー時も1秒待って次へ
       nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000);
     });
-  }, []); // 依存配列は空
+  }, []); // この関数自体は再生成不要
 
-  // 【タスク6】 bedStatuses を監視し、音声キューを更新
+  // bedStatuses（ベッドの状態リスト）が変わるたびに実行されるエフェクト
   useEffect(() => {
-    if (!bedStatuses) return; // ステータスが読み込まれていない場合は何もしない
-    const prevStatuses = prevStatusesRef.current; // 前回の状態を取得
+    // bedStatusesがまだ読み込まれていない場合は何もしない
+    if (!bedStatuses) return; 
+    // 前回の状態リストを取得
+    const prevStatuses = prevStatusesRef.current; 
 
-    if (prevStatuses) { // 初回実行時(prevStatuses=null)は比較しない
-      const newCalls = [];
+    // 前回の状態リストが存在する場合（＝初回読み込み時でない場合）のみ比較
+    if (prevStatuses) { 
+      const newCalls = []; // 新しく「送迎可能」になったベッドを格納する配列
       // 全ベッドをループして状態変化をチェック
       for (let i = 1; i <= totalBeds; i++) {
         const bedNumStr = i.toString();
         const currentStatus = bedStatuses[bedNumStr];
         const previousStatus = prevStatuses[bedNumStr];
         
-        // 「治療中」から「送迎可能」に変わったベッドを検出
+        // 【仕様通り】「治療中」から「送迎可能」に変わった時 *だけ* 検出
         if (previousStatus === '治療中' && currentStatus === '送迎可能') {
           newCalls.push(bedNumStr);
         }
       }
 
+      // 新しく呼び出すベッドが1床以上ある場合
       if (newCalls.length > 0) {
-        // キューにソートして追加（ベッド番号順に読み上げるため）
+        // ベッド番号順にソート（10番と2番が同時に来ても2番から読み上げるため）
         newCalls.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        // 音声再生キューに追加
         speechQueueRef.current.push(...newCalls);
+        // もし現在再生中でなければ、再生を開始する
         if (!isSpeaking) {
-          speakNextInQueue(); // 再生中でなければ再生開始
+          speakNextInQueue();
         }
       }
     }
     
-    // 現在の状態を次回の比較用に保存
+    // 現在の状態を「前回の状態」として保存
     prevStatusesRef.current = bedStatuses;
-  }, [bedStatuses, isSpeaking, speakNextInQueue]);
+  }, [bedStatuses, isSpeaking, speakNextInQueue]); // 状態リストなどが変わるたびに再実行
   // --- 音声通知機能 ここまで ---
 
-  // 【タスク5】 クラーク操作 (送迎可能 -> 連絡済 に変更)
-  const handleBedReset = async (bedNumber) => {
+  // 【★修正★】 管理者タップ操作 (治療中 -> 送迎可能 -> 連絡済 -> 治療中)
+  const handleAdminBedTap = async (bedNumber) => {
     if (!bedStatuses || !statusDocRef) return;
-    const currentStatus = bedStatuses[bedNumber];
+    const bedNumStr = bedNumber.toString();
+    const currentStatus = bedStatuses[bedNumStr];
     
-    // 「送迎可能」のベッドのみ操作可能
-    if (currentStatus === '送迎可能') {
-      try {
-        // フィールド名をキーとして更新 (例: { "5": "連絡済" })
-        await updateDoc(statusDocRef, {
-          [bedNumber]: "連絡済"
-        });
-      } catch (err) {
-        console.error("ステータスのリセットに失敗:", err);
-        alert("更新に失敗しました。");
-      }
+    let newStatus = currentStatus;
+    // 状態をサイクリックに変更
+    if (currentStatus === '治療中') {
+      newStatus = '送迎可能';
+    } else if (currentStatus === '送迎可能') {
+      newStatus = '連絡済';
+    } else if (currentStatus === '連絡済') {
+      newStatus = '治療中'; 
     }
+
+    try {
+      // データベースを更新
+      await updateDoc(statusDocRef, {
+        [bedNumStr]: newStatus
+      });
+    } catch (err) {
+      console.error("ステータスの更新に失敗:", err);
+      alert("更新に失敗しました。");
+      }
   };
 
   // --- レンダリング ---
-  if (loading) {
-    return <LoadingSpinner text="入院透析室モニターを読み込み中..." />;
-  }
-  if (error) {
-    return <p className="text-red-500 text-center">{error}</p>;
-  }
-
   return (
     <div className="space-y-6">
+      {/* ヘッダーと編集ボタン */}
       <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow">
         <h2 className="text-2xl font-bold">管理・モニター画面</h2>
         <button
@@ -1983,24 +1991,28 @@ const InpatientAdminPage = () => {
         </button>
       </div>
 
-      {/* 【タスク4】 レイアウト編集モードの表示切り替え */}
+      {/* レイアウト編集モード（true）の場合 */}
       {isLayoutEditMode ? (
-        <LayoutEditor onSaveComplete={() => setIsLayoutEditMode(false)} 
-          initialPositions={bedLayout}
-        />
+        <LayoutEditor 
+          onSaveComplete={() => setIsLayoutEditMode(false)} 
+          initialPositions={bedLayout} 
+        />
       ) : (
+        /* モニターモード（false）の場合 */
         <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-hidden">
-            {bedLayout && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
-                const status = bedStatuses[bedNumber] || '治療中';
-                const statusStyle = getBedStatusStyle(status);
-
+          {bedLayout && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
+            const status = bedStatuses[bedNumber] || '治療中';
+            const statusStyle = getBedStatusStyle(status);
+            
             return (
               <button
                 key={bedNumber}
                 style={{ position: 'absolute', top, left }}
-                className={`p-3 rounded-lg font-bold shadow-md w-20 h-16 flex justify-center items-center transition-colors duration-300 ${statusStyle} ${status === '送迎可能' ? 'cursor-pointer' : 'cursor-default'}`}
-                onClick={() => handleBedReset(bedNumber)} // 【タスク5】
-                disabled={status !== '送迎可能'} // 送迎可能以外は押せない
+                // 【★修正★】 常にクリック可能 (cursor-pointer) に
+                className={`p-3 rounded-lg font-bold shadow-md w-20 h-16 flex justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-110`}
+                // 【★修正★】 呼び出す関数を管理用の循環関数に変更
+                onClick={() => handleAdminBedTap(bedNumber)} 
+                // disabled属性は削除
               >
                 {bedNumber}
               </button>
@@ -2009,7 +2021,7 @@ const InpatientAdminPage = () => {
         </div>
       )}
       
-      {/* 【タスク6】 音声再生中のインジケーター */}
+      {/* 音声再生中のインジケーター */}
       {isSpeaking && 
           <div className="fixed bottom-5 right-5 bg-yellow-400 text-black font-bold py-2 px-4 rounded-full shadow-lg flex items-center z-50">
               <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
@@ -2022,60 +2034,69 @@ const InpatientAdminPage = () => {
     </div>
   );
 };
-
 // --- 2. スタッフ画面 (InpatientStaffPage) ---
-// 【タスク4, 5, 7】
-const InpatientStaffPage = () => {
-  const { bedLayout, bedStatuses, statusDocRef, loading, error } = useBedData();
-  const [isScannerOpen, setScannerOpen] = useState(false); // 【タスク7】 QRスキャナモーダル
+// 【★修正★】 治療中 ⇔ 送迎可能 のトグル（切り替え）機能を追加
+const InpatientStaffPage = ({ bedLayout, bedStatuses, statusDocRef }) => {
+  // データは親の InpatientView から props で受け取る
+  const [isScannerOpen, setScannerOpen] = useState(false); // QRスキャナモーダル
 
-  // 【タスク5】 スタッフ操作 (治療中 -> 送迎可能 に変更)
+  // 【★修正★】 スタッフの手動タップ操作（治療中 ⇔ 送迎可能 のトグル）
   const handleBedTap = useCallback(async (bedNumber) => {
     if (!bedStatuses || !statusDocRef) return;
-    // bedNumberが文字列であることを確認
+    // bedNumberが数値の場合も考慮し、文字列に統一
     const bedNumStr = bedNumber.toString();
     const currentStatus = bedStatuses[bedNumStr];
     
-    // 「治療中」のベッドのみ操作可能
+    let newStatus = currentStatus;
     if (currentStatus === '治療中') {
+      newStatus = '送迎可能'; // 治療中 -> 送迎可能
+    } else if (currentStatus === '送迎可能') {
+      newStatus = '治療中'; // 送迎可能 -> 治療中 (★仕様変更)
+    }
+    // '連絡済'の場合は newStatus === currentStatus となり、何もしない
+    
+    // 状態が変わる場合のみデータベースを更新
+    if (newStatus !== currentStatus) {
       try {
+        // Firestoreの特定フィールド（ベッド番号）だけを更新
         await updateDoc(statusDocRef, {
-          [bedNumStr]: "送迎可能"
+          [bedNumStr]: newStatus
         });
       } catch (err) {
         console.error("ステータスの更新に失敗:", err);
         alert("更新に失敗しました。");
       }
     }
-  }, [bedStatuses, statusDocRef]); // 依存配列に最新のstateとrefを含める
+  }, [bedStatuses, statusDocRef]); // propsで渡された最新のデータに依存
 
-  // 【タスク7】 QRスキャン成功時のコールバック
+  // 【★修正★】 QRスキャン操作（治療中 -> 送迎可能 の一方通行）
   const handleScanSuccess = useCallback((decodedText) => {
     // スキャンされたテキストが 1～20 の数字であるか検証
     const bedNumber = parseInt(decodedText, 10);
     if (bedNumber >= 1 && bedNumber <= totalBeds) {
       const bedNumStr = bedNumber.toString();
+      
+      // スキャンしたベッドが「治療中」の場合のみ処理を実行
       if (bedStatuses && bedStatuses[bedNumStr] === '治療中') {
-        // 治療中であれば、送迎可能に変更
-        handleBedTap(bedNumStr);
+        // トグル機能を持つ handleBedTap を呼び出す
+        // (結果的に「送迎可能」になる)
+        handleBedTap(bedNumStr); 
         return { success: true, message: `${bedNumStr}番ベッドを「送迎可能」にしました。` };
       } else if (bedStatuses && bedStatuses[bedNumStr] !== '治療中') {
-        return { success: false, message: `${bedNumStr}番ベッドは既に操作済みです。` };
+        // 「送迎可能」や「連絡済」をスキャンした場合
+        return { success: false, message: `${bedNumStr}番ベッドは「治療中」ではありません。` };
       } else {
+        // bedStatuses がまだ読み込めていない等の場合
         return { success: false, message: "ベッドの状態を取得できません。" };
       }
     } else {
+      // 1-20以外のQRコードをスキャンした場合
       return { success: false, message: `無効なコードです: ${decodedText}` };
     }
-  }, [bedStatuses, handleBedTap]); // handleBedTapも依存配列に
+  }, [bedStatuses, handleBedTap]); // 依存配列に handleBedTap を追加
 
   // --- レンダリング ---
-  if (loading) {
-    return <LoadingSpinner text="入院透析室スタッフ画面を読み込み中..." />;
-  }
-  if (error) {
-    return <p className="text-red-500 text-center">{error}</p>;
-  }
+  // (ローディングとエラーは親のInpatientViewが処理)
 
   return (
     <div>
@@ -2087,14 +2108,14 @@ const InpatientStaffPage = () => {
         />
       )}
       
+      {/* ヘッダーとQRスキャンボタン */}
       <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow mb-6">
         <h2 className="text-2xl font-bold">スタッフ操作画面</h2>
-        {/* 【タスク7】 QRスキャンボタン */}
         <button
           onClick={() => setScannerOpen(true)}
           title="QRコードで呼び出し"
           className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold p-3 rounded-lg transition"
-G        >
+        >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -2102,20 +2123,24 @@ G        >
         </button>
       </div>
 
+      {/* ベッドレイアウト表示エリア */}
       <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-hidden">
-        {/* ベッドの絶対配置 */}
+        {/* bedLayout が読み込めてから表示 */}
         {bedLayout && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
+          // bedStatuses から該当ベッドの状態を取得 (なければ'治療中'扱い)
           const status = bedStatuses[bedNumber] || '治療中';
           const statusStyle = getBedStatusStyle(status);
-          // 【タスク4】 治療中以外は操作不可
-          const isDisabled = status !== '治療中';
+          
+          // 【★修正★】 「連絡済」の場合のみ操作不可(disabled)にする
+          const isDisabled = status === '連絡済';
 
           return (
             <button
               key={bedNumber}
               style={{ position: 'absolute', top, left }}
+              // 状態に応じたスタイルを適用し、操作不可ならカーソルと透明度を変更
               className={`p-3 rounded-lg font-bold shadow-md w-20 h-16 flex justify-center items-center transition-colors duration-300 ${statusStyle} ${isDisabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:brightness-110'}`}
-              onClick={() => handleBedTap(bedNumber)} // 【タスク5】
+              onClick={() => handleBedTap(bedNumber)} // 手動タップ操作
               disabled={isDisabled}
             >
               {bedNumber}
@@ -2134,6 +2159,9 @@ const InpatientView = ({ user, onGoBack }) => {
   // 入院透析室ではクール選択は不要
   const hideCoolSelector = true;
 
+// ★ 修正点: useBedDataフックをここで *一度だけ* 呼び出す
+  const { bedLayout, bedStatuses, statusDocRef, loading, error } = useBedData();
+
   // タブ切り替えボタン
   const NavButton = ({ page, label }) => (
     <button 
@@ -2146,10 +2174,34 @@ const InpatientView = ({ user, onGoBack }) => {
 
   // 表示するページコンポーネントを決定
   const renderPage = () => {
+    // ★ 修正点: ローディングとエラー処理をここで行う
+    if (loading) {
+      return <LoadingSpinner text="入院透析室データを読み込み中..." />;
+    }
+    if (error) {
+      return <p className="text-red-500 text-center">{error}</p>;
+    }
+    
+    // ★ 修正点: 子コンポーネントにデータを props として渡す
     switch (currentPage) {
-      case 'admin': return <InpatientAdminPage />;
-      case 'staff': return <InpatientStaffPage />;
-      default: return <InpatientAdminPage />;
+      case 'admin': 
+        return <InpatientAdminPage 
+                  bedLayout={bedLayout} 
+                  bedStatuses={bedStatuses} 
+                  statusDocRef={statusDocRef} 
+                />;
+      case 'staff': 
+        return <InpatientStaffPage 
+                  bedLayout={bedLayout} 
+                  bedStatuses={bedStatuses} 
+                  statusDocRef={statusDocRef} 
+                />;
+      default: 
+        return <InpatientAdminPage 
+                  bedLayout={bedLayout} 
+                  bedStatuses={bedStatuses} 
+                  statusDocRef={statusDocRef} 
+                />;
     }
   };
 
