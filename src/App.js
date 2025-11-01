@@ -1671,49 +1671,16 @@ const BedButton = ({ bedNumber, left, top }) => {
 };
 
 // ベッド配置をD&Dで編集し、Firestoreに保存/読み込みするエディタ
-const LayoutEditor = ({ onSaveComplete }) => {
+const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
   const { selectedFacility } = useContext(AppContext); // 施設情報をContextから取得
-  const [bedPositions, setBedPositions] = useState({}); // ベッドの座標 { "1": {top, left}, ... }
-  const [loading, setLoading] = useState(true);
+  const [bedPositions, setBedPositions] = useState(initialPositions); // ベッドの座標 { "1": {top, left}, ... }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
   // Firestoreのドキュメント参照
   const layoutDocRef = doc(db, 'bedLayouts', selectedFacility);
 
-  // --- 1. レイアウトの読み込み ---
-  useEffect(() => {
-    const fetchLayout = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const docSnap = await getDoc(layoutDocRef);
-        if (docSnap.exists() && docSnap.data().positions) {
-          // データがあればそれを読み込む
-          setBedPositions(docSnap.data().positions);
-        } else {
-          // データがなければ初期レイアウトを生成 (20床を10x2列で配置)
-          const initialPositions = {};
-          for (let i = 1; i <= totalBeds; i++) {
-            const row = i <= 10 ? 0 : 1; // 1-10床が1行目, 11-20床が2行目
-            const col = i <= 10 ? i - 1 : i - 11;
-            initialPositions[i.toString()] = {
-              top: 50 + row * 100, // 行間のマージン
-              left: 10 + col * 90, // 列間のマージン
-            };
-          }
-          setBedPositions(initialPositions);
-        }
-      } catch (err) {
-        console.error("レイアウトの読み込みに失敗:", err);
-        setError("読み込みに失敗しました。");
-      }
-      setLoading(false);
-    };
-    fetchLayout();
-  }, [layoutDocRef]); // layoutDocRefは不変だが、明示的に依存
-
-  // --- 2. ドロップ処理 ---
+  // --- 1. ドロップ処理 ---
   // ベッドがドロップされた時の座標更新ロジック
   const moveBed = useCallback((bedNumber, left, top) => {
     setBedPositions((prev) => ({
@@ -1739,7 +1706,7 @@ const LayoutEditor = ({ onSaveComplete }) => {
     },
   }), [moveBed]);
 
-  // --- 3. レイアウトの保存 ---
+  // --- 2. レイアウトの保存 ---
   const handleSaveLayout = async () => {
     setSaving(true);
     setError(null);
@@ -1754,9 +1721,7 @@ const LayoutEditor = ({ onSaveComplete }) => {
     setSaving(false);
   };
 
-  // --- 4. レンダリング ---
-  if (loading) return <LoadingSpinner text="レイアウトを読み込み中..." />;
-
+  // --- 3. レンダリング ---
   return (
     <div className="p-4 border rounded-lg bg-gray-50">
       <div className="flex justify-between items-center mb-4">
@@ -1794,7 +1759,8 @@ const useBedData = () => {
   const { selectedFacility, selectedDate } = useContext(AppContext);
   const [bedLayout, setBedLayout] = useState(null); // 座標データ
   const [bedStatuses, setBedStatuses] = useState(null); // 状態データ
-  const [loading, setLoading] = useState(true);
+  const [layoutLoading, setLayoutLoading] = useState(true); // ★ 変更点: レイアウト専用ローディング
+  const [statusLoading, setStatusLoading] = useState(true); // ★ 変更点: ステータス専用ローディング
   const [error, setError] = useState(null);
 
   // Firestoreのドキュメント参照
@@ -1804,27 +1770,38 @@ const useBedData = () => {
 
   // 【タスク4】 レイアウト(bedLayouts)の購読
   useEffect(() => {
-    setLoading(true); // 日付や施設が変わるたびにローディング開始
+    setLayoutLoading(true); // 日付や施設が変わるたびにローディング開始
     const unsubscribe = onSnapshot(layoutDocRef, (docSnap) => {
       if (docSnap.exists() && docSnap.data().positions) {
         setBedLayout(docSnap.data().positions);
       } else {
         // レイアウト未設定の場合、空のオブジェクトをセット
         // (LayoutEditor側で初期レイアウトが生成される)
-        setBedLayout({}); 
+        // ★ 変更点: データがなければ初期レイアウトを *ここで* 生成する
+        const initialPositions = {};
+        for (let i = 1; i <= totalBeds; i++) {
+          const row = i <= 10 ? 0 : 1;
+          const col = i <= 10 ? i - 1 : i - 11;
+          initialPositions[i.toString()] = {
+            top: 50 + row * 100,
+            left: 10 + col * 90,
+          };
+        }
+        setBedLayout(initialPositions);
       }
+      setLayoutLoading(false); // ★ 変更点: レイアウトローディング完了
       // レイアウトが読み込めても、ステータスが読み込めるまでローディングは継続
     }, (err) => {
       console.error("レイアウトの購読に失敗:", err);
       setError("レイアウトの読み込みに失敗しました。");
-      setLoading(false);
+      setLayoutLoading(false);
     });
     return () => unsubscribe();
   }, [layoutDocRef]); // layoutDocRefは selectedFacility に依存
 
   // 【タスク4】 状態(bedStatuses)の購読
   useEffect(() => {
-    setLoading(true); // 日付や施設が変わるたびにローディング開始
+    setStatusLoading(true); // 日付や施設が変わるたびにローディング開始
     const unsubscribe = onSnapshot(statusDocRef, async (docSnap) => {
       if (docSnap.exists()) {
         setBedStatuses(docSnap.data());
@@ -1844,17 +1821,17 @@ const useBedData = () => {
         }
       }
       // ステータスが読み込めたらローディング終了（レイアウトは別）
-      setLoading(false);
+      setStatusLoading(false); // ★ 変更点: ステータスローディング完了
     }, (err) => {
       console.error("ステータスの購読に失敗:", err);
       setError("ステータスの読み込みに失敗しました。");
-      setLoading(false);
+      setStatusLoading(false);
     });
     return () => unsubscribe();
   }, [statusDocRef]); // statusDocRefは selectedFacility, selectedDate に依存
 
   // bedLayout と bedStatuses の両方が読み込めるまで loading = true とする
-  const isLoading = loading || bedLayout === null || bedStatuses === null;
+    const isLoading = layoutLoading || statusLoading;
 
   return { bedLayout, bedStatuses, statusDocRef, loading: isLoading, error };
 };
@@ -1991,9 +1968,6 @@ const InpatientAdminPage = () => {
   if (error) {
     return <p className="text-red-500 text-center">{error}</p>;
   }
-  // bedLayoutが空オブジェクト（未設定）の場合のハンドリング
-  const isLayoutUnset = Object.keys(bedLayout).length === 0;
-
 
   return (
     <div className="space-y-6">
@@ -2011,21 +1985,15 @@ const InpatientAdminPage = () => {
 
       {/* 【タスク4】 レイアウト編集モードの表示切り替え */}
       {isLayoutEditMode ? (
-        <LayoutEditor onSaveComplete={() => setIsLayoutEditMode(false)} />
+        <LayoutEditor onSaveComplete={() => setIsLayoutEditMode(false)} 
+          initialPositions={bedLayout}
+        />
       ) : (
         <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-hidden">
-          {/* レイアウトが未設定の場合のメッセージ */}
-          {isLayoutUnset && (
-            <div className="text-center text-gray-500">
-              <p>ベッド配置がまだ設定されていません。</p>
-              <p>「ベッド配置を編集」ボタンから初期レイアウトを設定・保存してください。</p>
-            </div>
-          )}
-          {/* ベッドの絶対配置 */}
-          {!isLayoutUnset && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
-            const status = bedStatuses[bedNumber] || '治療中';
-            const statusStyle = getBedStatusStyle(status);
-            
+            {bedLayout && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
+                const status = bedStatuses[bedNumber] || '治療中';
+                const statusStyle = getBedStatusStyle(status);
+
             return (
               <button
                 key={bedNumber}
@@ -2108,8 +2076,6 @@ const InpatientStaffPage = () => {
   if (error) {
     return <p className="text-red-500 text-center">{error}</p>;
   }
-  // bedLayoutが空オブジェクト（未設定）の場合のハンドリング
-  const isLayoutUnset = Object.keys(bedLayout).length === 0;
 
   return (
     <div>
@@ -2137,15 +2103,8 @@ G        >
       </div>
 
       <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-hidden">
-        {/* レイアウトが未設定の場合のメッセージ */}
-        {isLayoutUnset && (
-          <div className="text-center text-gray-500">
-            <p>ベッド配置がまだ設定されていません。</p>
-            <p>管理者画面でレイアウトを設定してください。</p>
-          </div>
-        )}
         {/* ベッドの絶対配置 */}
-        {!isLayoutUnset && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
+        {bedLayout && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
           const status = bedStatuses[bedNumber] || '治療中';
           const statusStyle = getBedStatusStyle(status);
           // 【タスク4】 治療中以外は操作不可
