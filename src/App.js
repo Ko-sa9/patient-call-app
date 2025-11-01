@@ -1755,12 +1755,13 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
 // --- 【タスク4】 InpatientView 関連 ---
 
 // --- 共通カスタムフック (レイアウトとステータスのリアルタイム購読) ---
+// 【★バグ修正★】 データ更新時の無限ローディングを解消
 const useBedData = () => {
   const { selectedFacility, selectedDate } = useContext(AppContext);
   const [bedLayout, setBedLayout] = useState(null); // 座標データ
   const [bedStatuses, setBedStatuses] = useState(null); // 状態データ
-  const [layoutLoading, setLayoutLoading] = useState(true); // ★ 変更点: レイアウト専用ローディング
-  const [statusLoading, setStatusLoading] = useState(true); // ★ 変更点: ステータス専用ローディング
+  const [layoutLoading, setLayoutLoading] = useState(true); // レイアウト専用ローディング
+  const [statusLoading, setStatusLoading] = useState(true); // ステータス専用ローディング
   const [error, setError] = useState(null);
 
   // Firestoreのドキュメント参照
@@ -1768,16 +1769,15 @@ const useBedData = () => {
   const statusDocId = `${selectedFacility}_${selectedDate}`;
   const statusDocRef = doc(db, 'bedStatuses', statusDocId);
 
-  // 【タスク4】 レイアウト(bedLayouts)の購読
+  // 【1. レイアウト(bedLayouts)の購読】
   useEffect(() => {
-    setLayoutLoading(true); // 日付や施設が変わるたびにローディング開始
+    // layoutDocRef（施設）が変わった時だけローディングをTrueにする
+    setLayoutLoading(true); 
     const unsubscribe = onSnapshot(layoutDocRef, (docSnap) => {
       if (docSnap.exists() && docSnap.data().positions) {
         setBedLayout(docSnap.data().positions);
       } else {
-        // レイアウト未設定の場合、空のオブジェクトをセット
-        // (LayoutEditor側で初期レイアウトが生成される)
-        // ★ 変更点: データがなければ初期レイアウトを *ここで* 生成する
+        // データがなければ初期レイアウトを生成 (10x2列)
         const initialPositions = {};
         for (let i = 1; i <= totalBeds; i++) {
           const row = i <= 10 ? 0 : 1;
@@ -1789,24 +1789,26 @@ const useBedData = () => {
         }
         setBedLayout(initialPositions);
       }
-      setLayoutLoading(false); // ★ 変更点: レイアウトローディング完了
-      // レイアウトが読み込めても、ステータスが読み込めるまでローディングは継続
+      // 初回データ取得時（またはエラー時）にローディングをFalseに
+      setLayoutLoading(false);
     }, (err) => {
       console.error("レイアウトの購読に失敗:", err);
       setError("レイアウトの読み込みに失敗しました。");
       setLayoutLoading(false);
     });
+    // クリーンアップ
     return () => unsubscribe();
-  }, [layoutDocRef]); // layoutDocRefは selectedFacility に依存
+  }, [layoutDocRef]); // 施設が変わった時だけ再実行
 
-  // 【タスク4】 状態(bedStatuses)の購読
+  // 【2. 状態(bedStatuses)の購読】
   useEffect(() => {
-    setStatusLoading(true); // 日付や施設が変わるたびにローディング開始
+    // statusDocRef（日付や施設）が変わった時だけローディングをTrueにする
+    setStatusLoading(true); 
     const unsubscribe = onSnapshot(statusDocRef, async (docSnap) => {
       if (docSnap.exists()) {
         setBedStatuses(docSnap.data());
       } else {
-        // 【タスク4】 その日初回の場合、全ベッドを「治療中」で初期化
+        // その日初回の場合、全ベッドを「治療中」で初期化
         console.log("本日のステータスドキュメントが存在しないため、初期化します。");
         const initialStatuses = {};
         for (let i = 1; i <= totalBeds; i++) {
@@ -1820,18 +1822,22 @@ const useBedData = () => {
           setError("ステータスの初期化に失敗しました。");
         }
       }
-      // ステータスが読み込めたらローディング終了（レイアウトは別）
-      setStatusLoading(false); // ★ 変更点: ステータスローディング完了
+      // ★重要★
+      // リアルタイム更新（クリック）時もここは通るが、
+      // setStatusLoading(true) は *実行されない* ため、スピナーは戻らない
+      setStatusLoading(false);
     }, (err) => {
       console.error("ステータスの購読に失敗:", err);
       setError("ステータスの読み込みに失敗しました。");
       setStatusLoading(false);
     });
+    // クリーンアップ
     return () => unsubscribe();
-  }, [statusDocRef]); // statusDocRefは selectedFacility, selectedDate に依存
+  }, [statusDocRef]); // 日付や施設が変わった時だけ再実行
 
-  // bedLayout と bedStatuses の両方が読み込めるまで loading = true とする
-    const isLoading = layoutLoading || statusLoading;
+  // 3. 最終的なローディング状態
+  // どちらかが初回読み込み中の場合は true
+  const isLoading = layoutLoading || statusLoading;
 
   return { bedLayout, bedStatuses, statusDocRef, loading: isLoading, error };
 };
