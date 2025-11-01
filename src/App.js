@@ -1755,7 +1755,7 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
 // --- 【タスク4】 InpatientView 関連 ---
 
 // --- 共通カスタムフック (レイアウトとステータスのリアルタイム購読) ---
-// 【★バグ修正★】 関数型アップデートを使い、クリック時の不要な再描画を防止
+// 【★バグ修正★】 Optimistic Updateを廃止し、DB更新→onSnapshot検知のシンプルな一方向データフローに戻す
 const useBedData = () => {
   const { selectedFacility, selectedDate } = useContext(AppContext);
   
@@ -1773,12 +1773,13 @@ const useBedData = () => {
 
   // 【1. レイアウトの購読】 (変更なし)
   useEffect(() => {
+    // layoutDocRef（施設）が変わった時だけローディングをTrueにする
     setLayoutLoading(true); 
     const unsubscribe = onSnapshot(layoutDocRef, (docSnap) => {
       if (docSnap.exists() && docSnap.data().positions) {
         setBedLayout(docSnap.data().positions);
       } else {
-        // 初期レイアウトを生成
+        // データがなければ初期レイアウトを生成 (10x2列)
         const initialPositions = {};
         for (let i = 1; i <= totalBeds; i++) {
           const row = i <= 10 ? 0 : 1;
@@ -1787,17 +1788,20 @@ const useBedData = () => {
         }
         setBedLayout(initialPositions);
       }
+      // 初回データ取得時（またはエラー時）にローディングをFalseに
       setLayoutLoading(false);
     }, (err) => {
       console.error("レイアウトの購読に失敗:", err);
       setError("レイアウトの読み込みに失敗しました。");
       setLayoutLoading(false);
     });
+    // クリーンアップ
     return () => unsubscribe();
   }, [layoutDocRef]); // 施設が変わった時だけ再実行
 
-  // 【2. 状態の購読】 (変更なし)
+  // 【2. 状態(bedStatuses)の購読】 (変更なし)
   useEffect(() => {
+    // statusDocRef（日付や施設）が変わった時だけローディングをTrueにする
     setStatusLoading(true); 
     const unsubscribe = onSnapshot(statusDocRef, async (docSnap) => {
       if (docSnap.exists()) {
@@ -1821,77 +1825,74 @@ const useBedData = () => {
       setError("ステータスの読み込みに失敗しました。");
       setStatusLoading(false);
     });
+    // クリーンアップ
     return () => unsubscribe();
   }, [statusDocRef]); // 日付や施設が変わった時だけ再実行
 
-  // 【3. ★ Optimistic Update ★のためのクリック処理】
-  // (useCallbackの依存配列から bedStatuses を削除)
+  // 【3. ★ 修正 ★ クリック処理】
+  // (ローカルのsetBedStatusesを削除し、単純なupdateDocのみ実行)
 
   // スタッフ用: 治療中 ⇔ 送迎可能
   const handleBedTap = useCallback(async (bedNumber) => {
     const bedNumStr = bedNumber.toString();
     
-    // ★ 修正点: 関数型アップデート (prevStatuses を使う)
-    setBedStatuses(prevStatuses => {
-      const currentStatus = prevStatuses ? prevStatuses[bedNumStr] : '治療中';
-      let newStatus = currentStatus;
+    // 現在の状態をローカルのstateから取得
+    // (bedStatusesがnullの場合は、初期化中なので何もしない)
+    if (!bedStatuses) return;
+    const currentStatus = bedStatuses[bedNumStr] || '治療中';
+    
+    let newStatus = currentStatus;
+    if (currentStatus === '治療中') {
+      newStatus = '送迎可能';
+    } else if (currentStatus === '送迎可能') {
+      newStatus = '治療中';
+    }
 
-      if (currentStatus === '治療中') {
-        newStatus = '送迎可能';
-      } else if (currentStatus === '送迎可能') {
-        newStatus = '治療中';
-      }
-
-      if (newStatus !== currentStatus) {
-        // 裏側でデータベースを更新
-        updateDoc(statusDocRef, { [bedNumStr]: newStatus })
-          .catch(err => {
-            console.error("更新失敗、ロールバック:", err);
-            // エラーが起きたら画面を元に戻す
-            setBedStatuses(prev => ({ ...prev, [bedNumStr]: currentStatus }));
-            alert("更新に失敗しました。");
-          });
-        // ★ローカルのstateを*先に*返す (瞬時に画面が変わる)
-        return { ...prevStatuses, [bedNumStr]: newStatus };
-      }
+    if (newStatus !== currentStatus) {
+      // ★ 修正点: ローカルのsetBedStatuses(Optimistic Update)を呼び出さない
       
-      // 変更がない場合は元のstateを返す
-      return prevStatuses;
-    });
-  // ★ 修正点: 依存配列から bedStatuses を削除
-  }, [statusDocRef]); 
+      // ★ 修正点: DBの更新のみ実行し、onSnapshotが検知するのを待つ
+      try {
+        await updateDoc(statusDocRef, { [bedNumStr]: newStatus });
+      } catch (err) {
+        console.error("更新失敗:", err);
+        alert("更新に失敗しました。");
+        // ロールバック処理は不要 (ローカルを変更していないため)
+      }
+    }
+  // ★ 修正点: 依存配列に bedStatuses を再度追加 (currentStatusを正しく取得するため)
+  }, [bedStatuses, statusDocRef]); 
 
   // 管理者用: 治療中 -> 送迎可能 -> 連絡済 -> 治療中
   const handleAdminBedTap = useCallback(async (bedNumber) => {
     const bedNumStr = bedNumber.toString();
 
-    // ★ 修正点: 関数型アップデート (prevStatuses を使う)
-    setBedStatuses(prevStatuses => {
-      const currentStatus = prevStatuses ? prevStatuses[bedNumStr] : '治療中';
-      let newStatus = currentStatus;
+    // (bedStatusesがnullの場合は、初期化中なので何もしない)
+    if (!bedStatuses) return;
+    const currentStatus = bedStatuses[bedNumStr] || '治療中';
+    
+    let newStatus = currentStatus;
+    if (currentStatus === '治療中') {
+      newStatus = '送迎可能';
+    } else if (currentStatus === '送迎可能') {
+      newStatus = '連絡済';
+    } else if (currentStatus === '連絡済') {
+      newStatus = '治療中';
+    }
 
-      if (currentStatus === '治療中') {
-        newStatus = '送迎可能';
-      } else if (currentStatus === '送迎可能') {
-        newStatus = '連絡済';
-      } else if (currentStatus === '連絡済') {
-        newStatus = '治療中';
+    // ★ 修正点: ローカルのsetBedStatuses(Optimistic Update)を呼び出さない
+    
+    // ★ 修正点: DBの更新のみ実行し、onSnapshotが検知するのを待つ
+    if (newStatus !== currentStatus) {
+      try {
+        await updateDoc(statusDocRef, { [bedNumStr]: newStatus });
+      } catch (err) {
+        console.error("更新失敗:", err);
+        alert("更新に失敗しました。");
       }
-
-      // 裏側でデータベースを更新
-      updateDoc(statusDocRef, { [bedNumStr]: newStatus })
-        .catch(err => {
-          console.error("更新失敗、ロールバック:", err);
-          // エラーが起きたら画面を元に戻す
-          setBedStatuses(prev => ({ ...prev, [bedNumStr]: currentStatus }));
-          alert("更新に失敗しました。");
-        });
-      
-      // ★ローカルのstateを*先に*返す (瞬時に画面が変わる)
-      return { ...prevStatuses, [bedNumStr]: newStatus };
-    });
-  // ★ 修正点: 依存配列から bedStatuses を削除
-  }, [statusDocRef]); 
+    }
+  // ★ 修正点: 依存配列に bedStatuses を再度追加
+  }, [bedStatuses, statusDocRef]); 
 
   // 最終的なローディング状態
   const isLoading = layoutLoading || statusLoading;
@@ -1902,8 +1903,8 @@ const useBedData = () => {
     bedStatuses, 
     loading: isLoading, 
     error,
-    handleBedTap,       // ★ 安定化された関数
-    handleAdminBedTap   // ★ 安定化された関数
+    handleBedTap,
+    handleAdminBedTap
   };
 };
 
