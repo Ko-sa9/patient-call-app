@@ -2153,28 +2153,27 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, statusDocRef }) => {
 };
 
 // --- 3. 親コンポーネント (InpatientView) ---
-// 【タスク4】
+// 【★バグ修正★】 子コンポーネントの再マウントを防ぐため、CSSで表示を切り替える
 const InpatientView = ({ user, onGoBack }) => {
   const [currentPage, setCurrentPage] = useState('admin'); // 'admin' or 'staff'
-  // 入院透析室ではクール選択は不要
   const hideCoolSelector = true;
-
-// ★ 修正点: useBedDataフックをここで *一度だけ* 呼び出す
+  
+  // 1. データ管理(useBedData)を親で一度だけ呼び出す
   const { bedLayout, bedStatuses, statusDocRef, loading, error } = useBedData();
 
-  // タブ切り替えボタン
+  // 2. タブ切り替えボタン
   const NavButton = ({ page, label }) => (
-    <button 
-      onClick={() => setCurrentPage(page)} 
+    <button 
+      onClick={() => setCurrentPage(page)} 
       className={`px-3 py-2 sm:px-4 rounded-lg font-medium transition duration-200 text-sm sm:text-base ${ currentPage === page ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-200'}`}
     >
       {label}
     </button>
   );
 
-  // 表示するページコンポーネントを決定
-  const renderPage = () => {
-    // ★ 修正点: ローディングとエラー処理をここで行う
+  // 3. ページ本体のレンダリング
+  const renderPages = () => {
+    // 3a. ローディングとエラー処理 (最優先)
     if (loading) {
       return <LoadingSpinner text="入院透析室データを読み込み中..." />;
     }
@@ -2182,34 +2181,38 @@ const InpatientView = ({ user, onGoBack }) => {
       return <p className="text-red-500 text-center">{error}</p>;
     }
     
-    // ★ 修正点: 子コンポーネントにデータを props として渡す
-    switch (currentPage) {
-      case 'admin': 
-        return <InpatientAdminPage 
-                  bedLayout={bedLayout} 
-                  bedStatuses={bedStatuses} 
-                  statusDocRef={statusDocRef} 
-                />;
-      case 'staff': 
-        return <InpatientStaffPage 
-                  bedLayout={bedLayout} 
-                  bedStatuses={bedStatuses} 
-                  statusDocRef={statusDocRef} 
-                />;
-      default: 
-        return <InpatientAdminPage 
-                  bedLayout={bedLayout} 
-                  bedStatuses={bedStatuses} 
-                  statusDocRef={statusDocRef} 
-                />;
-    }
+    // 3b. 【★修正点★】
+    // switch文でインスタンスを生成するのではなく、
+    // 両方のコンポーネントを描画しておき、CSSの display で隠す
+    return (
+      <>
+        {/* 管理/モニター画面 (currentPageが'admin'でない時は非表示) */}
+        <div style={{ display: currentPage === 'admin' ? 'block' : 'none' }}>
+          <InpatientAdminPage 
+            bedLayout={bedLayout} 
+            bedStatuses={bedStatuses} 
+            statusDocRef={statusDocRef} 
+          />
+        </div>
+        
+        {/* スタッフ操作画面 (currentPageが'staff'でない時は非表示) */}
+        <div style={{ display: currentPage === 'staff' ? 'block' : 'none' }}>
+          <InpatientStaffPage 
+            bedLayout={bedLayout} 
+            bedStatuses={bedStatuses} 
+            statusDocRef={statusDocRef} 
+          />
+        </div>
+      </>
+    );
   };
 
+  // 4. アプリ全体のレイアウト
   return (
-    <AppLayout 
-      user={user} 
-      onGoBack={onGoBack} 
-      hideCoolSelector={hideCoolSelector} 
+    <AppLayout 
+      user={user} 
+      onGoBack={onGoBack} 
+      hideCoolSelector={hideCoolSelector} 
       navButtons={
         <>
           <NavButton page="admin" label="管理/モニター" />
@@ -2217,7 +2220,7 @@ const InpatientView = ({ user, onGoBack }) => {
         </>
       }
     >
-      {renderPage()}
+      {renderPages()}
     </AppLayout>
   );
 };
