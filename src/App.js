@@ -1886,8 +1886,8 @@ const useBedData = () => {
 
   // 【3. クリック処理】
 
-  // スタッフ用: 連絡済(Gray) -> 治療中(Blue), 治療中(Blue) -> 送迎可能(Yellow)
-  // (※「送迎可能」はクリック不可)
+  // ★ 修正点: スタッフ用ロジックを 青 <-> 黄 のトグルに変更
+  // スタッフ用: 連絡済(Gray) -> 治療中(Blue), 治療中(Blue) <-> 送迎可能(Yellow)
   const handleBedTap = useCallback(async (bedNumber) => {
     const bedNumStr = bedNumber.toString();
     if (!bedStatuses) return;
@@ -1895,17 +1895,19 @@ const useBedData = () => {
     
     let newStatus = currentStatus;
     if (currentStatus === '連絡済') {
-      newStatus = '治療中'; // Gray -> Blue
+      newStatus = '治療中'; // Gray -> Blue (※UI側でDisabled想定)
     } else if (currentStatus === '治療中') {
       newStatus = '送迎可能'; // Blue -> Yellow
+    } else if (currentStatus === '送迎可能') { // ★ 修正点: この分岐を追加
+      newStatus = '治療中'; // Yellow -> Blue (キャンセル)
     }
-    // (送迎可能(Yellow)はスタッフは操作しない)
 
     if (newStatus !== currentStatus) {
       const bedDocRef = doc(statusCollectionRef, bedNumStr);
       try {
         await updateDoc(bedDocRef, { status: newStatus });
-      } catch (err) {
+      } catch (err)
+ {
         console.error("更新失敗:", err);
         alert("更新に失敗しました。");
       }
