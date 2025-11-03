@@ -1797,7 +1797,7 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
 // --- 【タスク4】 InpatientView 関連 ---
 
 // --- 共通カスタムフック (レイアウトとステータスのリアルタイム購読) ---
-// 【★ 2025-11-03 修正 ★】 運用フローに合わせてクリックロジックを全面修正
+// 【★ 2025-11-03 修正 ★】 handleResetAll の楽観的更新を削除し、無限ループを解消
 const useBedData = () => {
   const { selectedFacility, selectedDate } = useContext(AppContext);
   
@@ -1818,7 +1818,7 @@ const useBedData = () => {
     return collection(db, 'bed_statuses', statusCollectionId, 'beds');
   }, [selectedFacility, selectedDate]);
   
-  // 【1. レイアウトの購読】 (変更なし)
+  // 【1. レイアウトの購読】
   useEffect(() => {
     setLayoutLoading(true); 
     const unsubscribe = onSnapshot(layoutDocRef, (docSnap) => {
@@ -1857,8 +1857,7 @@ const useBedData = () => {
         for (let i = 1; i <= totalBeds; i++) {
           const bedNumStr = i.toString();
           const bedDocRef = doc(statusCollectionRef, bedNumStr);
-          // 【★ご要望 1★】 初期値を「連絡済」に変更
-          batch.set(bedDocRef, { status: "連絡済" });
+          batch.set(bedDocRef, { status: "連絡済" }); // ★ 初期値: 連絡済
           initialStatuses[bedNumStr] = "連絡済";
         }
         try {
@@ -1887,90 +1886,79 @@ const useBedData = () => {
 
   // 【3. クリック処理】
 
-  // 【★ご要望 3★】 スタッフ用: 治療中(青) ⇔ 送迎可能(黄) のトグル
+  // スタッフ用: 連絡済(Gray) -> 治療中(Blue), 治療中(Blue) -> 送迎可能(Yellow)
+  // (※「送迎可能」はクリック不可)
   const handleBedTap = useCallback(async (bedNumber) => {
     const bedNumStr = bedNumber.toString();
+    if (!bedStatuses) return;
+    const currentStatus = bedStatuses[bedNumStr] || '連絡済'; 
     
-    setBedStatuses(prevStatuses => {
-      // ★ バグ修正: デフォルトフォールバックを「連絡済」に
-      const currentStatus = prevStatuses ? prevStatuses[bedNumStr] : '連絡済'; 
-      let newStatus = currentStatus;
+    let newStatus = currentStatus;
+    if (currentStatus === '連絡済') {
+      newStatus = '治療中'; // Gray -> Blue
+    } else if (currentStatus === '治療中') {
+      newStatus = '送迎可能'; // Blue -> Yellow
+    }
+    // (送迎可能(Yellow)はスタッフは操作しない)
 
-      // ★ 修正点: 青 ⇔ 黄 のトグルロジック
-      if (currentStatus === '治療中') {
-        newStatus = '送迎可能'; // Blue -> Yellow
-      } else if (currentStatus === '送迎可能') {
-        newStatus = '治療中'; // Yellow -> Blue
+    if (newStatus !== currentStatus) {
+      const bedDocRef = doc(statusCollectionRef, bedNumStr);
+      try {
+        await updateDoc(bedDocRef, { status: newStatus });
+      } catch (err) {
+        console.error("更新失敗:", err);
+        alert("更新に失敗しました。");
       }
-      // (「連絡済」(Gray) はクリックされても newStatus === currentStatus となり、何もしない)
+    }
+  }, [bedStatuses, statusCollectionRef]); // 依存配列に bedStatuses を追加
 
-      if (newStatus !== currentStatus) {
-        const bedDocRef = doc(statusCollectionRef, bedNumStr);
-        updateDoc(bedDocRef, { status: newStatus })
-          .catch(err => {
-            console.error("更新失敗、ロールバック:", err);
-            setBedStatuses(prev => ({ ...prev, [bedNumStr]: currentStatus }));
-            alert("更新に失敗しました。");
-          });
-        return { ...prevStatuses, [bedNumStr]: newStatus };
-      }
-      return prevStatuses;
-    });
-  }, [statusCollectionRef]); 
-
-  // 【★ご要望 2★】 管理者用: 連絡済(Gray) -> 治療中(Blue) -> 送迎可能(Yellow) -> 連絡済(Gray)
+  // 管理者用: 連絡済 -> 治療中 -> 送迎可能 -> 連絡済 (循環)
   const handleAdminBedTap = useCallback(async (bedNumber) => {
     const bedNumStr = bedNumber.toString();
+    if (!bedStatuses) return;
+    const currentStatus = bedStatuses[bedNumStr] || '連絡済';
+    
+    let newStatus = currentStatus;
+    if (currentStatus === '治療中') {
+      newStatus = '送迎可能';
+    } else if (currentStatus === '送迎可能') {
+      newStatus = '連絡済';
+    } else if (currentStatus === '連絡済') {
+      newStatus = '治療中';
+    }
 
-    setBedStatuses(prevStatuses => {
-      // ★ バグ修正: デフォルトフォールバックを「連絡済」に
-      const currentStatus = prevStatuses ? prevStatuses[bedNumStr] : '連絡済';
-      let newStatus = currentStatus;
-
-      if (currentStatus === '治療中') {
-        newStatus = '送迎可能'; // Blue -> Yellow
-      } else if (currentStatus === '送迎可能') {
-        newStatus = '連絡済'; // Yellow -> Gray
-      } else if (currentStatus === '連絡済') {
-        newStatus = '治療中'; // Gray -> Blue
+    if (newStatus !== currentStatus) {
+      const bedDocRef = doc(statusCollectionRef, bedNumStr);
+      try {
+        await updateDoc(bedDocRef, { status: newStatus });
+      } catch (err) {
+        console.error("更新失敗:", err);
+        alert("更新に失敗しました。");
       }
+    }
+  }, [bedStatuses, statusCollectionRef]); // 依存配列に bedStatuses を追加
 
-      if (newStatus !== currentStatus) {
-        const bedDocRef = doc(statusCollectionRef, bedNumStr);
-        updateDoc(bedDocRef, { status: newStatus })
-          .catch(err => {
-            console.error("更新失敗、ロールバック:", err);
-            setBedStatuses(prev => ({ ...prev, [bedNumStr]: currentStatus }));
-            alert("更新に失敗しました。");
-          });
-        return { ...prevStatuses, [bedNumStr]: newStatus };
-      }
-      return prevStatuses;
-    });
-  }, [statusCollectionRef]); 
-
-  // 【★ご要望 4★】 全ベッドリセット機能
+  // 【★バグ修正★】 全ベッドリセット機能 (Optimistic Updateを削除)
   const handleResetAll = useCallback(async () => {
     console.log("全ベッドを「連絡済」にリセットします...");
-    // 1. Optimistic Update: まずローカルをリセット
-    const newStatuses = {};
-    for (let i = 1; i <= totalBeds; i++) {
-      newStatuses[i.toString()] = "連絡済";
-    }
-    setBedStatuses(newStatuses);
+    
+    // ★ 修正点: 先にローカルstateを変更するロジックを削除
+    // setBedStatuses(newStatuses); 
 
-    // 2. 裏側でDBをバッチ更新
+    // DBをバッチ更新 (onSnapshotが検知して画面が更新される)
     const batch = writeBatch(db);
     for (let i = 1; i <= totalBeds; i++) {
       const bedDocRef = doc(statusCollectionRef, i.toString());
+      // updateDoc ではなく setDoc(..., {merge: true}) または updateDoc を使う
+      // (updateDocはドキュメントが存在しないと失敗する可能性があるが、初期化後なのでupdateでOK)
       batch.update(bedDocRef, { status: "連絡済" });
     }
     try {
-      await batch.commit(); // DBに一括書き込み
+      await batch.commit();
     } catch (err) {
       console.error("全リセットに失敗:", err);
       alert("リセットに失敗しました。ページを再読み込みしてください。");
-      // エラー時は onSnapshot が自動で元に戻す
+      // エラー時はonSnapshotが自動でDBの状態に戻すため、ローカルのロールバックは不要
     }
   }, [statusCollectionRef]); // 依存配列
 
@@ -1985,7 +1973,7 @@ const useBedData = () => {
     error,
     handleBedTap,
     handleAdminBedTap,
-    handleResetAll // ★ リセット関数を返す
+    handleResetAll 
   };
 };
 
