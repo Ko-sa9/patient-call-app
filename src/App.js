@@ -8,6 +8,7 @@ import * as wanakana from 'wanakana';
 import QrCodeListPage from './components/QrCodeListPage.js';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
+import QRCode from 'qrcode.react'; // ★ 修正点: この行を追記
 
 // --- Firebase Configuration ---
 // Firebaseプロジェクトの設定情報。環境変数からAPIキーを読み込むことで、セキュリティを向上させている。
@@ -2151,12 +2152,14 @@ const getBedStatusStyle = (status) => {
 // --- 1. 管理/モニター画面 (InpatientAdminPage) ---
 // 【★修正★】 音声ロジックを削除し、isSpeaking を props で受け取る
 // 【★ 2025-11-04 修正 ★】 リセットボタンと編集ボタンをアイコン化
+// 【★ 2025-11-05 修正 ★】 QRコード発行ボタンを追加
 const InpatientAdminPage = ({ 
   bedLayout, 
   bedStatuses, 
   handleAdminBedTap, 
   handleResetAll, 
-  isSpeaking // ★ 修正点: props で isSpeaking を受け取る
+  isSpeaking,
+  onShowQrPage // ★ 修正点: QRページ表示用の関数を受け取る
 }) => {
   // データとクリック関数を親(InpatientView)から props で受け取る
   const [isLayoutEditMode, setIsLayoutEditMode] = useState(false); // レイアウト編集モード
@@ -2193,6 +2196,19 @@ const InpatientAdminPage = ({
         <h2 className="text-2xl font-bold">管理・モニター画面</h2>
         {/* 【★修正★】 ボタンをflexコンテナで囲む */}
         <div className="flex items-center space-x-2">
+          {/* ★ 修正点: QRコード発行ボタンを追加 */}
+          <button
+            onClick={onShowQrPage}
+            title="ベッド用QRコード発行"
+            className="font-bold p-3 rounded-lg transition bg-teal-500 hover:bg-teal-600 text-white"
+          >
+            {/* QRコードアイコン */}
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M1 1h4v4H1V1z" />
+              <path d="M2 2v2h2V2H2zM6 1h4v4H6V1zM7 2v2h2V2H7zM11 1h4v4h-4V1zm1 1v2h2V2h-2zM1 6h4v4H1V6zm1 1v2h2V7H2zM6 6h4v4H6V6zm1 1v2h2V7H7zM11 6h4v4h-4V6zm1 1v2h2V7h-2zM1 11h4v4H1v-4zm1 1v2h2v-2H2zM6 11h4v4H6v-4zm1 1v2h2v-2H7zM11 11h4v4h-4v-4zm1 1v2h2v-2h-2z" />
+            </svg>
+          </button>
+          
           {/* ★ 修正点: リセットボタンをアイコン化 */}
           <button
             onClick={() => setConfirmResetModal(true)}
@@ -2354,8 +2370,10 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
 
 // --- 3. 親コンポーネント (InpatientView) ---
 // 【★修正★】 isSpeaking をフックから受け取り AdminPage に渡す
+// 【★ 2025-11-05 修正 ★】 QRコードページ表示ロジックを追加
 const InpatientView = ({ user, onGoBack }) => {
     const [currentPage, setCurrentPage] = useState('admin'); // 'admin' or 'staff'
+    const [showQrPage, setShowQrPage] = useState(false); // ★ 修正点: QRページ表示用のstate
     const hideCoolSelector = true;
 
     // 1. データ管理(useBedData)を親で一度だけ呼び出す
@@ -2382,6 +2400,11 @@ const InpatientView = ({ user, onGoBack }) => {
 
     // 3. ページ本体のレンダリング
     const renderPages = () => {
+        // ★ 修正点: QRコードページが最優先
+        if (showQrPage) {
+            return <InpatientQrCodePage onBack={() => setShowQrPage(false)} />;
+        }
+
         // 3a. ローディングとエラー処理 (最優先)
         if (loading) {
             return <LoadingSpinner text="入院透析室データを読み込み中..." />;
@@ -2402,6 +2425,7 @@ const InpatientView = ({ user, onGoBack }) => {
                         // isVisible={currentPage === 'admin'} // ← ★ 修正点: 削除
                         handleResetAll={handleResetAll}
                         isSpeaking={isSpeaking} // ← ★ 修正点: props として渡す
+                        onShowQrPage={() => setShowQrPage(true)} // ★ 修正点: QRページ表示関数を渡す
                     />
                 </div>
 
@@ -2425,8 +2449,13 @@ const InpatientView = ({ user, onGoBack }) => {
             hideCoolSelector={hideCoolSelector}
             navButtons={
                 <>
-                    <NavButton page="admin" label="管理/モニター" />
-                    <NavButton page="staff" label="スタッフ" />
+                    {/* ★ 修正点: QRページ表示中はタブを非表示 */}
+                    {!showQrPage && (
+                        <>
+                            <NavButton page="admin" label="管理/モニター" />
+                            <NavButton page="staff" label="スタッフ" />
+                        </>
+                    )}
                 </>
             }
         >
@@ -2438,6 +2467,136 @@ const InpatientView = ({ user, onGoBack }) => {
 // ==================================================================
 // --- (入院透析室用コンポーネント群 ここまで) ---
 // ==================================================================
+
+// --- 【★ 2025-11-05 新規追加 ★】 入院透析室用 QRコード印刷ページ ---
+
+/**
+ * QRコードカード（ベッド番号ごとに1枚、両面印刷対応）
+ * @param {object} props - プロパティ
+ * @param {number} props.bedNumber - ベッド番号
+ */
+const QrCodeCard = ({ bedNumber }) => {
+    // 3cm ≒ 113px。Tailwindの w-28 h-28 (112px) を使用
+    const qrSize = 112; 
+    const value = bedNumber.toString(); // QRコードの値はベッド番号の文字列
+
+    return (
+        // A4 1枚に約6枚入るサイズ (横10cm x 縦7.5cm)
+        <div className="w-[10cm] h-[7.5cm] border border-gray-400 bg-white rounded-lg p-4 flex flex-col justify-between items-center break-inside-avoid mb-4">
+            
+            {/* 上半分（表面） */}
+            <div className="w-full flex flex-col items-center">
+                <h3 className="text-xl font-bold mb-2">ベッド番号: {bedNumber}</h3>
+                <QRCode value={value} size={qrSize} />
+            </div>
+
+            {/* 中央の山折り線 */}
+            <div className="w-full border-t-2 border-dashed border-gray-500 my-2 relative">
+                <span className="text-sm text-gray-500 absolute -top-3 left-1/2 -translate-x-1/2 bg-white px-2">山折り</span>
+            </div>
+
+            {/* 下半分（裏面）- 上下反転させる */}
+            <div className="w-full flex flex-col items-center transform rotate-180">
+                <h3 className="text-xl font-bold mb-2">ベッド番号: {bedNumber}</h3>
+                <QRCode value={value} size={qrSize} />
+            </div>
+        </div>
+    );
+};
+
+/**
+ * 入院透析室用 QRコード印刷ページ本体
+ * @param {object} props - プロパティ
+ * @param {Function} props.onBack - 戻るボタンのコールバック関数
+ */
+const InpatientQrCodePage = ({ onBack }) => {
+    const { selectedFacility } = useContext(AppContext);
+
+    // 1から20までのベッド番号の配列を生成
+    const bedNumbers = Array.from({ length: totalBeds }, (_, i) => i + 1);
+
+    // 印刷処理
+    const handlePrint = () => {
+        window.print();
+    };
+
+    return (
+        <div className="bg-gray-100">
+            {/* 印刷用のスタイルシートを埋め込み */}
+            <style>
+                {`
+                @media print {
+                    /* 印刷時はヘッダーとAppLayoutのpadding/marginを非表示 */
+                    body {
+                        margin: 0;
+                        padding: 0;
+                        background-color: white !important;
+                    }
+                    nav, .app-layout-padding, .print-header {
+                        display: none !important;
+                    }
+                    /* 印刷ページ本体 */
+                    .print-content {
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background-color: white !important;
+                        box-shadow: none !important;
+                    }
+                    /* カードがページをまたがないようにする */
+                    .qr-card {
+                        break-inside: avoid;
+                        page-break-inside: avoid;
+                    }
+                    /* 2列組を維持 */
+                    .print-grid {
+                        grid-template-columns: repeat(2, minmax(0, 1fr));
+                    }
+                }
+                `}
+            </style>
+
+            {/* 画面表示用のヘッダー (印刷時は非表示) */}
+            <div className="print-header bg-white p-4 rounded-lg shadow mb-6 flex justify-between items-center">
+                <div>
+                    <h2 className="text-2xl font-bold">入院透析室 QRコード一覧</h2>
+                    <p className="text-gray-600">{selectedFacility} (ベッド 1～20)</p>
+                </div>
+                <div className="flex space-x-2">
+                    {/* 戻るボタン (アイコン) */}
+                    <button
+                        onClick={onBack}
+                        title="戻る"
+                        className="font-bold p-3 rounded-lg transition bg-gray-500 hover:bg-gray-600 text-white"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </button>
+                    {/* 印刷ボタン (アイコン) */}
+                    <button
+                        onClick={handlePrint}
+                        title="印刷"
+                        className="font-bold p-3 rounded-lg transition bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm7-8a1 1 0 01-1-1V5a1 1 0 00-1-1H9a1 1 0 00-1 1v6a1 1 0 01-1 1" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            {/* QRコード一覧 (印刷エリア) */}
+            <div className="print-content bg-white p-4 rounded-lg shadow-inner grid grid-cols-1 md:print-grid md:grid-cols-2 gap-4">
+                {bedNumbers.map(bedNum => (
+                    <div key={bedNum} className="qr-card flex justify-center">
+                        <QrCodeCard bedNumber={bedNum} />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 
 // --- Main App ---
 // アプリケーションのルートコンポーネント。
