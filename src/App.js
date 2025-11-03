@@ -1798,7 +1798,8 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
 
 // --- 共通カスタムフック (レイアウトとステータスのリアルタイム購読) ---
 // 【★ 2025-11-03 修正 ★】 音声再生ロジックを InpatientAdminPage からこのフックに移動
-const useBedData = () => {
+// 【★ 2025-11-03 修正 ★】 管理/モニター画面がアクティブな時だけ新規再生するよう修正
+const useBedData = (currentPage) => { // ★ 修正点: currentPage を引数で受け取る
   const { selectedFacility, selectedDate } = useContext(AppContext);
   
   // 状態
@@ -2067,7 +2068,9 @@ const useBedData = () => {
       if (newCalls.length > 0) {
         newCalls.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
         speechQueueRef.current.push(...newCalls);
-        if (!isSpeaking) {
+        
+        // ★ 修正点: 管理ページがアクティブ('admin')な時だけ、新規再生を開始する
+        if (!isSpeaking && currentPage === 'admin') {
           speakNextInQueue();
         }
       }
@@ -2090,7 +2093,7 @@ const useBedData = () => {
       setIsSpeaking(false);
       nowPlayingRef.current = null; 
     };
-  }, [bedStatuses, isSpeaking, speakNextInQueue]); // isVisible を依存配列から削除
+  }, [bedStatuses, isSpeaking, speakNextInQueue, currentPage]); // ★ 修正点: 依存配列に currentPage を追加
   // --- 音声通知機能 ここまで ---
 
   // 最終的なローディング状態
@@ -2324,7 +2327,7 @@ const InpatientView = ({ user, onGoBack }) => {
         handleAdminBedTap,
         handleResetAll,
         isSpeaking // ★ 修正点: isSpeaking をフックから受け取る
-    } = useBedData();
+    } = useBedData(currentPage); // ★ 修正点: currentPage をフックに渡す
 
     // 2. タブ切り替えボタン
     const NavButton = ({ page, label }) => (
