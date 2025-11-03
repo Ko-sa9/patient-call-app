@@ -8,7 +8,7 @@ import * as wanakana from 'wanakana';
 import QrCodeListPage from './components/QrCodeListPage.js';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { QRCode } from 'qrcode.react'; // ★ 修正点: この行を追記
+import { QRCodeSVG } from 'qrcode.react'; // ★ 修正点: この行を追記
 
 // --- Firebase Configuration ---
 // Firebaseプロジェクトの設定情報。環境変数からAPIキーを読み込むことで、セキュリティを向上させている。
@@ -2487,7 +2487,8 @@ const QrCodeCard = ({ bedNumber }) => {
             {/* 上半分（表面） */}
             <div className="w-full flex flex-col items-center">
                 <h3 className="text-xl font-bold mb-2">ベッド番号: {bedNumber}</h3>
-                <QRCode value={value} size={qrSize} />
+                {/* ★ 修正点: <QRCode> を <QRCodeSVG> に変更 */}
+                <QRCodeSVG value={value} size={qrSize} />
             </div>
 
             {/* 中央の山折り線 */}
@@ -2498,7 +2499,8 @@ const QrCodeCard = ({ bedNumber }) => {
             {/* 下半分（裏面）- 上下反転させる */}
             <div className="w-full flex flex-col items-center transform rotate-180">
                 <h3 className="text-xl font-bold mb-2">ベッド番号: {bedNumber}</h3>
-                <QRCode value={value} size={qrSize} />
+                {/* ★ 修正点: <QRCode> を <QRCodeSVG> に変更 */}
+                <QRCodeSVG value={value} size={qrSize} />
             </div>
         </div>
     );
