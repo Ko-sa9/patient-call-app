@@ -2476,30 +2476,31 @@ const InpatientView = ({ user, onGoBack }) => {
  * @param {number} props.bedNumber - ベッド番号
  */
 const QrCodeCard = ({ bedNumber }) => {
-    // 3cm ≒ 113px。Tailwindの w-28 h-28 (112px) を使用
+    // 3cm ≒ 113px。
     const qrSize = 112; 
     const value = bedNumber.toString(); // QRコードの値はベッド番号の文字列
 
     return (
-        // A4 1枚に約6枚入るサイズ (横10cm x 縦7.5cm)
-        <div className="w-[10cm] h-[7.5cm] border border-gray-400 bg-white rounded-lg p-4 flex flex-col justify-between items-center break-inside-avoid mb-4">
+        // ★ 修正点: w-[10cm] h-[7.5cm]のサイズを維持
+        // ★ 修正点: "他施設"を参考にパディングを p-4 (16px) に変更
+        // ★ 修正点: flex-row (左右配置) に変更
+        <div className="w-[10cm] h-[7.5cm] border border-gray-400 bg-white rounded-lg p-4 flex flex-row justify-center items-center break-inside-avoid mb-4">
             
-            {/* 上半分（表面） */}
-            <div className="w-full flex flex-col items-center">
-                <h3 className="text-xl font-bold mb-2">ベッド番号: {bedNumber}</h3>
-                {/* ★ 修正点: <QRCode> を <QRCodeSVG> に変更 */}
+            {/* 左半分 (flex-1 で幅を均等化) */}
+            <div className="flex-1 flex flex-col items-center justify-center h-full">
+                {/* ★ 修正点: text-xl から text-lg に変更 (はみ出し防止) */}
+                <h3 className="text-lg font-bold mb-2">ベッド番号: {bedNumber}</h3>
                 <QRCodeSVG value={value} size={qrSize} />
             </div>
 
-            {/* 中央の山折り線 */}
-            <div className="w-full border-t-2 border-dashed border-gray-500 my-2 relative">
-                <span className="text-sm text-gray-500 absolute -top-3 left-1/2 -translate-x-1/2 bg-white px-2">山折り</span>
+            {/* 中央の「縦」の山折り線 */}
+            <div className="h-full border-l-2 border-dashed border-gray-400">
             </div>
 
-            {/* 下半分（裏面）- 上下反転させる */}
-            <div className="w-full flex flex-col items-center transform rotate-180">
-                <h3 className="text-xl font-bold mb-2">ベッド番号: {bedNumber}</h3>
-                {/* ★ 修正点: <QRCode> を <QRCodeSVG> に変更 */}
+            {/* 右半分 (flex-1 で幅を均等化) */}
+            <div className="flex-1 flex flex-col items-center justify-center h-full">
+                {/* ★ 修正点: text-xl から text-lg に変更 (はみ出し防止) */}
+                <h3 className="text-lg font-bold mb-2">ベッド番号: {bedNumber}</h3>
                 <QRCodeSVG value={value} size={qrSize} />
             </div>
         </div>
