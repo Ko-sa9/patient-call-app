@@ -1671,49 +1671,90 @@ const BedButton = ({ bedNumber, left, top }) => {
 };
 
 // ベッド配置をD&Dで編集し、Firestoreに保存/読み込みするエディタ
+// 【★ 2025-11-03 修正 ★】 グリッドスナップとスワップ（入れ替え）機能を追加
 const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
-  const { selectedFacility } = useContext(AppContext); // 施設情報をContextから取得
-  const [bedPositions, setBedPositions] = useState(initialPositions); // ベッドの座標 { "1": {top, left}, ... }
+  const { selectedFacility } = useContext(AppContext);
+  const [bedPositions, setBedPositions] = useState(initialPositions);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
   // Firestoreのドキュメント参照
   const layoutDocRef = doc(db, 'bedLayouts', selectedFacility);
 
-  // --- 1. ドロップ処理 ---
-  // ベッドがドロップされた時の座標更新ロジック
-  const moveBed = useCallback((bedNumber, left, top) => {
-    setBedPositions((prev) => ({
-      ...prev,
-      [bedNumber]: { left, top },
-    }));
-  }, []);
+  // --- 1. 定義 ---
+  // グリッドの単位 (px)
+  const GRID_SNAP = 10;
+  // ベッドのサイズ (Tailwindの w-20 = 5rem, h-16 = 4rem に相当)
+  const BED_WIDTH = 80; 
+  const BED_HEIGHT = 64;
 
-  // useDrop フックでドロップエリアを設定
+  // --- 2. ドロップ処理 (グリッドスナップとスワップ) ---
   const [, drop] = useDrop(() => ({
-    accept: ItemTypes.BED, // BedButtonからのドロップのみ受け入れる
+    accept: ItemTypes.BED,
     drop(item, monitor) {
-      // ドラッグ開始時からの差分を取得
       const delta = monitor.getDifferenceFromInitialOffset();
-      if (!delta) return; // 差分がなければ何もしない
+      if (!delta) return;
 
-      // 新しい座標を計算
-      const newLeft = Math.round(item.left + delta.x);
-      const newTop = Math.round(item.top + delta.y);
-      
-      // 座標を更新
-      moveBed(item.bedNumber, newLeft, newTop);
+      // --- グリッドスナップ ---
+      // マウスの移動先座標を計算し、最も近いグリッドにスナップ
+      const newLeft = Math.round((item.left + delta.x) / GRID_SNAP) * GRID_SNAP;
+      const newTop = Math.round((item.top + delta.y) / GRID_SNAP) * GRID_SNAP;
+      
+      const draggedBedNumber = item.bedNumber;
+      const originalPos = { top: item.top, left: item.left };
+
+      // --- スワップ（入れ替え）ロジック ---
+      // stateを安全に更新するため、関数型アップデートを使用
+      setBedPositions(currentPositions => {
+        // ドロップ先(newLeft, newTop)に、他のベッドがいないか探す
+        const targetBedEntry = Object.entries(currentPositions).find(
+          ([num, pos]) => {
+            // 自分自身（ドラッグ中のベッド）は除く
+            if (num === draggedBedNumber) return false;
+            
+            // 重なり判定: ドロップ先の座標が、既存のベッドの領域と重なるか
+            const isOverlapping = (
+              newLeft < pos.left + BED_WIDTH &&    // ドラッグした左端が、ターゲットの右端より左
+              newLeft + BED_WIDTH > pos.left &&   // ドラッグした右端が、ターゲットの左端より右
+              newTop < pos.top + BED_HEIGHT &&    // ... (Y軸も同様)
+              newTop + BED_HEIGHT > pos.top
+            );
+            return isOverlapping;
+          }
+        );
+
+        if (targetBedEntry) {
+          // --- 入れ替え実行 ---
+          const [targetNum, targetPos] = targetBedEntry;
+          const newPositions = { ...currentPositions };
+          
+          // 1. ターゲットのベッド(B)を、ドラッグしたベッド(A)の*元*の位置に移動
+          newPositions[targetNum] = originalPos;
+          // 2. ドラッグしたベッド(A)を、ターゲットのベッド(B)の*元*の位置に移動
+          newPositions[draggedBedNumber] = targetPos; 
+          
+          return newPositions;
+
+        } else {
+          // --- 通常の移動（入れ替えなし） ---
+          // ドラッグしたベッド(A)を、スナップされた新しい位置に移動
+          return {
+            ...currentPositions,
+            [draggedBedNumber]: { top: newTop, left: newLeft },
+          };
+        }
+      });
     },
-  }), [moveBed]);
+  // 依存配列は空（関数型アップデートを使っているため）
+  }), []); 
 
-  // --- 2. レイアウトの保存 ---
+  // --- 3. レイアウトの保存 --- (変更なし)
   const handleSaveLayout = async () => {
     setSaving(true);
     setError(null);
     try {
-      // Firestoreに現在の座標(bedPositions)を保存
       await setDoc(layoutDocRef, { positions: bedPositions });
-      if (onSaveComplete) onSaveComplete(); // 保存完了を親に通知
+      if (onSaveComplete) onSaveComplete();
     } catch (err) {
       console.error("レイアウトの保存に失敗:", err);
       setError("保存に失敗しました。");
@@ -1721,7 +1762,7 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
     setSaving(false);
   };
 
-  // --- 3. レンダリング ---
+  // --- 4. レンダリング --- (変更なし)
   return (
     <div className="p-4 border rounded-lg bg-gray-50">
       <div className="flex justify-between items-center mb-4">
@@ -1736,10 +1777,10 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
       </div>
       {error && <p className="text-red-500 text-center mb-4">{error}</p>}
       <p className="text-sm text-gray-600 mb-4">ベッド（青い箱）をドラッグして配置を調整し、「レイアウトを保存」ボタンを押してください。</p>
-      
+      
       {/* ドロップエリア (ref={drop}) */}
       <div ref={drop} className="relative w-full h-[400px] bg-white border-2 border-dashed border-gray-400 rounded-lg overflow-hidden">
-        {Object.entries(bedPositions).map(([bedNumber, { top, left }]) => (
+        {bedPositions && Object.entries(bedPositions).map(([bedNumber, { top, left }]) => (
           <BedButton
             key={bedNumber}
             bedNumber={bedNumber}
