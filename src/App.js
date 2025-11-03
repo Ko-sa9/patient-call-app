@@ -2136,6 +2136,7 @@ const getBedStatusStyle = (status) => {
 
 // --- 1. 管理/モニター画面 (InpatientAdminPage) ---
 // 【★修正★】 音声ロジックを削除し、isSpeaking を props で受け取る
+// 【★ 2025-11-04 修正 ★】 リセットボタンと編集ボタンをアイコン化
 const InpatientAdminPage = ({ 
   bedLayout, 
   bedStatuses, 
@@ -2178,20 +2179,37 @@ const InpatientAdminPage = ({
         <h2 className="text-2xl font-bold">管理・モニター画面</h2>
         {/* 【★修正★】 ボタンをflexコンテナで囲む */}
         <div className="flex items-center space-x-2">
-          {/* 【★追加★】 リセットボタン */}
+          {/* ★ 修正点: リセットボタンをアイコン化 */}
           <button
             onClick={() => setConfirmResetModal(true)}
-            className="font-bold py-2 px-6 rounded-lg transition bg-red-600 hover:bg-red-700 text-white"
+            title="全ベッドリセット" // アイコンにマウスオーバーした際のツールチップ
+            className="font-bold p-3 rounded-lg transition bg-red-600 hover:bg-red-700 text-white" // paddingを調整
           >
-            全ベッドリセット
+            {/* リフレッシュアイコン */}
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" />
+            </svg>
           </button>
+          
+          {/* ★ 修正点: 編集ボタンをアイコン化 */}
           <button
             onClick={() => setIsLayoutEditMode(!isLayoutEditMode)}
-            className={`font-bold py-2 px-6 rounded-lg transition ${
+            title={isLayoutEditMode ? "編集を終了" : "ベッド配置を編集"} // 状態に応じたツールチップ
+            className={`font-bold p-3 rounded-lg transition ${ // paddingを調整
               isLayoutEditMode ? 'bg-gray-600 hover:bg-gray-700' : 'bg-yellow-500 hover:bg-yellow-600'
             } text-white`}
           >
-            {isLayoutEditMode ? "編集を終了" : "ベッド配置を編集"}
+            {isLayoutEditMode ? (
+              // 編集終了モード（チェックマークアイコン）
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              // 通常モード（ペンシルアイコン）
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            )}
           </button>
         </div>
       </div>
@@ -2394,7 +2412,7 @@ const InpatientView = ({ user, onGoBack }) => {
             navButtons={
                 <>
                     <NavButton page="admin" label="管理/モニター" />
-                    <NavButton page="staff" label="スタッフ操作" />
+                    <NavButton page="staff" label="スタッフ" />
                 </>
             }
         >
