@@ -1671,7 +1671,7 @@ const BedButton = ({ bedNumber, left, top }) => {
 };
 
 // ベッド配置をD&Dで編集し、Firestoreに保存/読み込みするエディタ
-// 【★ 2025-11-03 修正 ★】 グリッドスナップとスワップ（入れ替え）機能を追加
+// 【★ 2025-11-03 修正 ★】 グリッドスナップ（マス目）＋ 構文エラー修正
 const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
   const { selectedFacility } = useContext(AppContext);
   const [bedPositions, setBedPositions] = useState(initialPositions);
@@ -1683,7 +1683,11 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
 
   // --- 1. 定義 ---
   // グリッドの単位 (px)
-  const GRID_SNAP = 10;
+  const GRID_SNAP_X = 90; // 横方向のマス目サイズ
+  const GRID_SNAP_Y = 100; // 縦方向のマス目サイズ
+  const OFFSET_X = 10; // 初期配置の左オフセット（基準点）
+  const OFFSET_Y = 50; // 初期配置の上オフセット（基準点）
+
   // ベッドのサイズ (Tailwindの w-20 = 5rem, h-16 = 4rem に相当)
   const BED_WIDTH = 80; 
   const BED_HEIGHT = 64;
@@ -1695,16 +1699,14 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
       const delta = monitor.getDifferenceFromInitialOffset();
       if (!delta) return;
 
-      // --- グリッドスナップ ---
-      // マウスの移動先座標を計算し、最も近いグリッドにスナップ
-      const newLeft = Math.round((item.left + delta.x) / GRID_SNAP) * GRID_SNAP;
-      const newTop = Math.round((item.top + delta.y) / GRID_SNAP) * GRID_SNAP;
+      // --- グリッドスナップ（マス目） ---
+      const newLeft = Math.round((item.left + delta.x - OFFSET_X) / GRID_SNAP_X) * GRID_SNAP_X + OFFSET_X;
+      const newTop = Math.round((item.top + delta.y - OFFSET_Y) / GRID_SNAP_Y) * GRID_SNAP_Y + OFFSET_Y;
       
       const draggedBedNumber = item.bedNumber;
       const originalPos = { top: item.top, left: item.left };
 
       // --- スワップ（入れ替え）ロジック ---
-      // stateを安全に更新するため、関数型アップデートを使用
       setBedPositions(currentPositions => {
         // ドロップ先(newLeft, newTop)に、他のベッドがいないか探す
         const targetBedEntry = Object.entries(currentPositions).find(
@@ -1712,11 +1714,11 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
             // 自分自身（ドラッグ中のベッド）は除く
             if (num === draggedBedNumber) return false;
             
-            // 重なり判定: ドロップ先の座標が、既存のベッドの領域と重なるか
+            // 重なり判定
             const isOverlapping = (
-              newLeft < pos.left + BED_WIDTH &&    // ドラッグした左端が、ターゲットの右端より左
-              newLeft + BED_WIDTH > pos.left &&   // ドラッグした右端が、ターゲットの左端より右
-              newTop < pos.top + BED_HEIGHT &&    // ... (Y軸も同様)
+              newLeft < pos.left + BED_WIDTH &&
+              newLeft + BED_WIDTH > pos.left &&
+              newTop < pos.top + BED_HEIGHT &&
               newTop + BED_HEIGHT > pos.top
             );
             return isOverlapping;
@@ -1728,25 +1730,23 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
           const [targetNum, targetPos] = targetBedEntry;
           const newPositions = { ...currentPositions };
           
-          // 1. ターゲットのベッド(B)を、ドラッグしたベッド(A)の*元*の位置に移動
           newPositions[targetNum] = originalPos;
-          // 2. ドラッグしたベッド(A)を、ターゲットのベッド(B)の*元*の位置に移動
           newPositions[draggedBedNumber] = targetPos; 
           
           return newPositions;
 
         } else {
           // --- 通常の移動（入れ替えなし） ---
-          // ドラッグしたベッド(A)を、スナップされた新しい位置に移動
           return {
             ...currentPositions,
             [draggedBedNumber]: { top: newTop, left: newLeft },
           };
         }
-      });
-    },
+      }); // setBedPositions の閉じ
+    }, // drop の閉じ
+  }), // ★★★ 構文エラー修正: useDrop のファクトリ関数 ( () => ({...}) ) の閉じ
   // 依存配列は空（関数型アップデートを使っているため）
-  }), []); 
+  []); // useDrop の依存配列の閉じ
 
   // --- 3. レイアウトの保存 --- (変更なし)
   const handleSaveLayout = async () => {
@@ -1780,7 +1780,7 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
       
       {/* ドロップエリア (ref={drop}) */}
       <div ref={drop} className="relative w-full h-[400px] bg-white border-2 border-dashed border-gray-400 rounded-lg overflow-hidden">
-        {bedPositions && Object.entries(bedPositions).map(([bedNumber, { top, left }]) => (
+       {bedPositions && Object.entries(bedPositions).map(([bedNumber, { top, left }]) => (
           <BedButton
             key={bedNumber}
             bedNumber={bedNumber}
