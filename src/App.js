@@ -1989,7 +1989,6 @@ const getBedStatusStyle = (status) => {
 };
 
 // --- 1. 管理/モニター画面 (InpatientAdminPage) ---
-// 【★バグ修正★】 画面表示中(isVisible)の時だけ音声ロジックを起動
 const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisible }) => {
   // データとクリック関数を親(InpatientView)から props で受け取る
   const [isLayoutEditMode, setIsLayoutEditMode] = useState(false); // レイアウト編集モード
@@ -2047,7 +2046,7 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisib
     });
   }, []); // この関数自体は再生成不要
 
-  // 【★バグ修正★】 bedStatuses または isVisible が変わるたびに実行
+  // bedStatuses（ベッドの状態リスト）が変わるたびに実行されるエフェクト
   useEffect(() => {
     // ★ 画面が非表示 (isVisible=false) の場合は、音声ロジックを一切実行しない
     if (!isVisible) {
@@ -2089,7 +2088,6 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisib
     }
     
     prevStatusesRef.current = bedStatuses;
-  // ★ 依存配列に isVisible を追加
   }, [bedStatuses, isSpeaking, speakNextInQueue, isVisible]); 
   // --- 音声通知機能 ここまで ---
 
@@ -2143,7 +2141,7 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisib
           <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-t       </svg>
+          </svg>
           音声再生中...
         </div>
       }
@@ -2198,6 +2196,7 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
         <button
           onClick={() => setScannerOpen(true)}
           title="QRコードで呼び出し"
+          // 【★バグ修正★】 タイポ 'G' を削除
           className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold p-3 rounded-lg transition"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2209,6 +2208,7 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
 
       {/* ベッドレイアウト表示エリア */}
       <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-hidden">
+        {/* 【★バグ修正★】 タイポ 'D' を削除 */}
         {bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
           const status = bedStatuses[bedNumber] || '治療中';
           const statusStyle = getBedStatusStyle(status);
