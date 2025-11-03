@@ -1990,163 +1990,216 @@ const getBedStatusStyle = (status) => {
 };
 
 // --- 1. 管理/モニター画面 (InpatientAdminPage) ---
+// 【★修正★】 音声の即時キャンセル機能を追加
 const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisible }) => {
-    // データとクリック関数を親(InpatientView)から props で受け取る
-    const [isLayoutEditMode, setIsLayoutEditMode] = useState(false); // レイアウト編集モード
+  // データとクリック関数を親(InpatientView)から props で受け取る
+  const [isLayoutEditMode, setIsLayoutEditMode] = useState(false); // レイアウト編集モード
 
-    // --- 【タスク6】 音声通知機能 ---
-    const prevStatusesRef = useRef(null); // 前回のベッド状態
-    const [isSpeaking, setIsSpeaking] = useState(false); // 再生中フラグ
-    const speechQueueRef = useRef([]); // 読み上げ待機キュー
-    const currentAudioRef = useRef(null); // 現在再生中のAudioオブジェクト
-    const nextSpeechTimerRef = useRef(null); // 次の再生までのタイマー
+  // --- 【タスク6】 音声通知機能 ---
+  const prevStatusesRef = useRef(null); // 前回のベッド状態
+  const [isSpeaking, setIsSpeaking] = useState(false); // 再生中フラグ
+  const speechQueueRef = useRef([]); // 読み上げ待機キュー
+  const currentAudioRef = useRef(null); // 現在再生中のAudioオブジェクト
+  const nextSpeechTimerRef = useRef(null); // 次の再生までのタイマー
+  
+  // 【★追加★】 現在再生中のベッド番号を管理
+  const nowPlayingRef = useRef(null); 
 
-    // キューから取り出して音声再生を実行する関数
-    const speakNextInQueue = useCallback(() => {
-        if (nextSpeechTimerRef.current) {
-            clearTimeout(nextSpeechTimerRef.current);
+  // キューから取り出して音声再生を実行する関数
+  const speakNextInQueue = useCallback(() => {
+    // 既存のタイマーがあればクリア
+    if (nextSpeechTimerRef.current) {
+      clearTimeout(nextSpeechTimerRef.current);
+      nextSpeechTimerRef.current = null;
+    }
+    // キューが空なら再生終了
+    if (speechQueueRef.current.length === 0) {
+      setIsSpeaking(false); 
+      nowPlayingRef.current = null; // ★追加
+      return;
+    }
+
+    setIsSpeaking(true);
+    const bedNumber = speechQueueRef.current.shift(); // キューからベッド番号を取り出す
+    nowPlayingRef.current = bedNumber; // ★追加: 再生中のベッドを記録
+    
+    // 仕様通り「〇番ベッド、送迎可能です。」というテキスト
+    const textToSpeak = `${bedNumber}番ベッド、送迎可能です。`;
+    const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app"; 
+
+    // Cloud Functionを呼び出して音声データを取得
+    fetch(functionUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: textToSpeak }),
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.audioContent) {
+        const audio = new Audio("data:audio/mp3;base64," + data.audioContent);
+        currentAudioRef.current = audio;
+        audio.play();
+        // 再生終了時の処理
+        audio.onended = () => {
+          currentAudioRef.current = null;
+          nowPlayingRef.current = null; // ★追加: 再生終了
+          // 1秒待って次のキューへ
+          nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000);
+        };
+      } else {
+        throw new Error(data.error || 'Audio content not found');
+      }
+    })
+    .catch((error) => {
+      console.error("Speech synthesis failed:", error);
+      currentAudioRef.current = null;
+      nowPlayingRef.current = null; // ★追加: 再生終了
+      // エラー時も1秒待って次へ
+      nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000);
+    });
+  }, []); // この関数自体は再生成不要
+
+  // bedStatuses（ベッドの状態リスト）が変わるたびに実行されるエフェクト
+  useEffect(() => {
+    // ★ 画面が非表示 (isVisible=false) の場合は、音声ロジックを一切実行しない
+    if (!isVisible) {
+      // もし非表示になる瞬間に再生中だったら、音声を停止する
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
+      // 読み上げキューもクリアする
+      speechQueueRef.current = [];
+      setIsSpeaking(false);
+      nowPlayingRef.current = null; // ★追加
+      // ★ここで処理を中断
+      return; 
+    }
+
+    // --- 以下は isVisible が true の場合のみ実行 ---
+    if (!bedStatuses) return; // 状態データがまだない場合は中断
+    const prevStatuses = prevStatusesRef.current; // 前回の状態を取得
+
+    // 前回の状態リストが存在する場合（＝初回読み込み時でない場合）のみ比較
+    if (prevStatuses) { 
+      const newCalls = []; // 新しく「送迎可能」になったベッド
+      const cancelledBeds = []; // ★追加: 「送迎可能」から変更されたベッド
+
+      // 全ベッドをループして状態変化をチェック
+      for (let i = 1; i <= totalBeds; i++) {
+        const bedNumStr = i.toString();
+        const currentStatus = bedStatuses[bedNumStr];
+        const previousStatus = prevStatuses[bedNumStr];
+        
+        // 1. 新規呼び出しの検出
+        if (previousStatus === '治療中' && currentStatus === '送迎可能') {
+          newCalls.push(bedNumStr);
+        }
+        
+        // 2. ★追加: キャンセルの検出
+        if (previousStatus === '送迎可能' && currentStatus !== '送迎可能') {
+          cancelledBeds.push(bedNumStr);
+        }
+      }
+
+      // 3. ★追加: キャンセル処理
+      if (cancelledBeds.length > 0) {
+        const cancelledBedSet = new Set(cancelledBeds);
+        // 3a. 再生待機キューから削除
+        speechQueueRef.current = speechQueueRef.current.filter(
+          bedNum => !cancelledBedSet.has(bedNum)
+        );
+        
+        // 3b. もし今再生中のものがキャンセルされたら、即時停止
+        if (nowPlayingRef.current && cancelledBedSet.has(nowPlayingRef.current)) {
+          if (currentAudioRef.current) {
+            currentAudioRef.current.pause(); // 音声を停止
+            currentAudioRef.current = null;
+          }
+          if (nextSpeechTimerRef.current) {
+            clearTimeout(nextSpeechTimerRef.current); // 次のタイマーもキャンセル
             nextSpeechTimerRef.current = null;
+          }
+          nowPlayingRef.current = null;
+          // 即座に次のキュー（もしあれば）の再生を開始
+          speakNextInQueue(); 
         }
-        if (speechQueueRef.current.length === 0) {
-            setIsSpeaking(false); // キューが空なら再生終了
-            return;
+      }
+
+      // 4. 新規呼び出し処理
+      if (newCalls.length > 0) {
+        // ベッド番号順にソート
+        newCalls.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        speechQueueRef.current.push(...newCalls); // キューに追加
+        // もし現在再生中でなければ、再生を開始する
+        if (!isSpeaking) {
+          speakNextInQueue();
         }
+      }
+    }
+    
+    // 現在の状態を「前回の状態」として保存
+    prevStatusesRef.current = bedStatuses;
+  }, [bedStatuses, isSpeaking, speakNextInQueue, isVisible]); // isVisibleが変更された時も実行
+  // --- 音声通知機能 ここまで ---
 
-        setIsSpeaking(true);
-        const bedNumber = speechQueueRef.current.shift(); // キューからベッド番号を取り出す
+  // --- レンダリング ---
+  return (
+    <div className="space-y-6">
+      {/* ヘッダーと編集ボタン */}
+      <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow">
+        <h2 className="text-2xl font-bold">管理・モニター画面</h2>
+        <button
+          onClick={() => setIsLayoutEditMode(!isLayoutEditMode)}
+          className={`font-bold py-2 px-6 rounded-lg transition ${
+            isLayoutEditMode ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-500 hover:bg-yellow-600'
+          } text-white`}
+        >
+          {isLayoutEditMode ? "編集を終了" : "ベッド配置を編集"}
+        </button>
+      </div>
 
-        // 仕様通り「〇番ベッド、送迎可能です。」というテキスト
-        const textToSpeak = `${bedNumber}番ベッド、送迎可能です。`;
-        const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app"; // Cloud Functionsのエンドポイント
-
-        fetch(functionUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: textToSpeak }),
-        })
-            .then(res => res.json())
-            .then(data => {
-                if (data.audioContent) {
-                    const audio = new Audio("data:audio/mp3;base64," + data.audioContent);
-                    currentAudioRef.current = audio;
-                    audio.play();
-                    audio.onended = () => {
-                        currentAudioRef.current = null;
-                        // 1秒待って次のキューへ
-                        nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000);
-                    };
-                } else {
-                    throw new Error(data.error || 'Audio content not found');
-                }
-            })
-            .catch((error) => {
-                console.error("Speech synthesis failed:", error);
-                currentAudioRef.current = null;
-                // エラー時も1秒待って次へ
-                nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000);
-            });
-    }, []); // この関数自体は再生成不要
-
-    // bedStatuses（ベッドの状態リスト）が変わるたびに実行されるエフェクト
-    useEffect(() => {
-        // ★ 画面が非表示 (isVisible=false) の場合は、音声ロジックを一切実行しない
-        if (!isVisible) {
-            // もし非表示になる瞬間に再生中だったら、音声を停止する
-            if (currentAudioRef.current) {
-                currentAudioRef.current.pause();
-                currentAudioRef.current = null;
-            }
-            // 読み上げキューもクリアする
-            speechQueueRef.current = [];
-            setIsSpeaking(false);
-            // ★ここで処理を中断
-            return;
-        }
-
-        // --- 以下は isVisible が true の場合のみ実行 ---
-        if (!bedStatuses) return;
-        const prevStatuses = prevStatusesRef.current;
-
-        if (prevStatuses) {
-            const newCalls = [];
-            for (let i = 1; i <= totalBeds; i++) {
-                const bedNumStr = i.toString();
-                const currentStatus = bedStatuses[bedNumStr];
-                const previousStatus = prevStatuses[bedNumStr];
-
-                if (previousStatus === '治療中' && currentStatus === '送迎可能') {
-                    newCalls.push(bedNumStr);
-                }
-            }
-
-            if (newCalls.length > 0) {
-                newCalls.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-                speechQueueRef.current.push(...newCalls);
-                if (!isSpeaking) {
-                    speakNextInQueue();
-                }
-            }
-        }
-
-        prevStatusesRef.current = bedStatuses;
-    }, [bedStatuses, isSpeaking, speakNextInQueue, isVisible]);
-    // --- 音声通知機能 ここまで ---
-
-    // --- レンダリング ---
-    return (
-        <div className="space-y-6">
-            {/* ヘッダーと編集ボタン */}
-            <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow">
-                <h2 className="text-2xl font-bold">管理・モニター画面</h2>
-                <button
-                    onClick={() => setIsLayoutEditMode(!isLayoutEditMode)}
-                    className={`font-bold py-2 px-6 rounded-lg transition ${isLayoutEditMode ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-500 hover:bg-yellow-600'
-                        } text-white`}
-                >
-                    {isLayoutEditMode ? "編集を終了" : "ベッド配置を編集"}
-                </button>
-            </div>
-
-            {/* レイアウト編集モード（true）の場合 */}
-            {isLayoutEditMode ? (
-                <LayoutEditor
-                    onSaveComplete={() => setIsLayoutEditMode(false)}
-                    initialPositions={bedLayout}
-                />
-            ) : (
-                /* モニターモード（false）の場合 */
-                <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-hidden">
-                    {bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
-                        const status = bedStatuses[bedNumber] || '治療中';
-                        const statusStyle = getBedStatusStyle(status);
-
-                        return (
-                            <button
-                                key={bedNumber}
-                                style={{ position: 'absolute', top, left }}
-                                className={`p-3 rounded-lg font-bold shadow-md w-20 h-16 flex justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-110`}
-                                // 親から渡された handleAdminBedTap を呼び出す
-                                onClick={() => handleAdminBedTap(bedNumber)}
-                            >
-                                {bedNumber}
-                            </button>
-                        );
-                    })}
-                </div>
-            )}
-
-            {/* 音声再生中のインジケーター */}
-            {isSpeaking &&
-                <div className="fixed bottom-5 right-5 bg-yellow-400 text-black font-bold py-2 px-4 rounded-full shadow-lg flex items-center z-50">
-                    <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    音声再生中...
-                </div>
-            }
+      {/* レイアウト編集モード（true）の場合 */}
+      {isLayoutEditMode ? (
+        <LayoutEditor 
+          onSaveComplete={() => setIsLayoutEditMode(false)} 
+          initialPositions={bedLayout} 
+        />
+      ) : (
+        /* モニターモード（false）の場合 */
+        <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-hidden">
+          {/* bedLayoutとbedStatusesの両方が読み込まれてから描画 */}
+          {bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
+            const status = bedStatuses[bedNumber] || '治療中';
+            const statusStyle = getBedStatusStyle(status);
+            
+            return (
+              <button
+                key={bedNumber}
+                style={{ position: 'absolute', top, left }}
+                className={`p-3 rounded-lg font-bold shadow-md w-20 h-16 flex justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-110`}
+                // 親から渡された handleAdminBedTap（循環クリック）を呼び出す
+                onClick={() => handleAdminBedTap(bedNumber)} 
+              >
+                {bedNumber}
+              </button>
+            );
+          })}
         </div>
-    );
+      )}
+      
+      {/* 音声再生中のインジケーター */}
+      {isSpeaking && 
+        <div className="fixed bottom-5 right-5 bg-yellow-400 text-black font-bold py-2 px-4 rounded-full shadow-lg flex items-center z-50">
+          <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          音声再生中...
+        </div>
+      }
+    </div>
+  );
 };
 
 // --- 2. スタッフ画面 (InpatientStaffPage) ---
