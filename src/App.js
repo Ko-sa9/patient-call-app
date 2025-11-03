@@ -2295,6 +2295,7 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
 
 // --- 3. 親コンポーネント (InpatientView) ---
 // 【★バグ修正★】 子コンポーネントに isVisible prop を渡す
+// 【★ 2025-11-03 修正 ★】 handleResetAll を InpatientAdminPage に渡す
 const InpatientView = ({ user, onGoBack }) => {
     const [currentPage, setCurrentPage] = useState('admin'); // 'admin' or 'staff'
     const hideCoolSelector = true;
@@ -2306,7 +2307,8 @@ const InpatientView = ({ user, onGoBack }) => {
         loading,
         error,
         handleBedTap,
-        handleAdminBedTap
+        handleAdminBedTap,
+        handleResetAll // ★ 修正点: handleResetAll をフックから受け取る
     } = useBedData();
 
     // 2. タブ切り替えボタン
@@ -2340,6 +2342,7 @@ const InpatientView = ({ user, onGoBack }) => {
                         handleAdminBedTap={handleAdminBedTap}
                         // 【★バグ修正★】 画面が表示されているかどうかのフラグを渡す
                         isVisible={currentPage === 'admin'}
+                        handleResetAll={handleResetAll} // ★ 修正点: InpatientAdminPage に props として渡す
                     />
                 </div>
 
