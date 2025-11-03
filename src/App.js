@@ -8,7 +8,7 @@ import * as wanakana from 'wanakana';
 import QrCodeListPage from './components/QrCodeListPage.js';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import {QRCode} from 'qrcode.react'; // ★ 修正点: この行を追記
+import { QRCode } from 'qrcode.react'; // ★ 修正点: この行を追記
 
 // --- Firebase Configuration ---
 // Firebaseプロジェクトの設定情報。環境変数からAPIキーを読み込むことで、セキュリティを向上させている。
