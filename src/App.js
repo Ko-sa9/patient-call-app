@@ -1797,7 +1797,7 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
 // --- 【タスク4】 InpatientView 関連 ---
 
 // --- 共通カスタムフック (レイアウトとステータスのリアルタイム購読) ---
-// 【★ 2025-11-03 修正 ★】 handleResetAll の楽観的更新を削除し、無限ループを解消
+// 【★ 2025-11-03 修正 ★】 音声再生ロジックを InpatientAdminPage からこのフックに移動
 const useBedData = () => {
   const { selectedFacility, selectedDate } = useContext(AppContext);
   
@@ -1886,7 +1886,6 @@ const useBedData = () => {
 
   // 【3. クリック処理】
 
-  // ★ 修正点: スタッフ用ロジックを 青 <-> 黄 のトグルに変更
   // スタッフ用: 連絡済(Gray) -> 治療中(Blue), 治療中(Blue) <-> 送迎可能(Yellow)
   const handleBedTap = useCallback(async (bedNumber) => {
     const bedNumStr = bedNumber.toString();
@@ -1898,7 +1897,7 @@ const useBedData = () => {
       newStatus = '治療中'; // Gray -> Blue (※UI側でDisabled想定)
     } else if (currentStatus === '治療中') {
       newStatus = '送迎可能'; // Blue -> Yellow
-    } else if (currentStatus === '送迎可能') { // ★ 修正点: この分岐を追加
+    } else if (currentStatus === '送迎可能') {
       newStatus = '治療中'; // Yellow -> Blue (キャンセル)
     }
 
@@ -1912,7 +1911,7 @@ const useBedData = () => {
         alert("更新に失敗しました。");
       }
     }
-  }, [bedStatuses, statusCollectionRef]); // 依存配列に bedStatuses を追加
+  }, [bedStatuses, statusCollectionRef]);
 
   // 管理者用: 連絡済 -> 治療中 -> 送迎可能 -> 連絡済 (循環)
   const handleAdminBedTap = useCallback(async (bedNumber) => {
@@ -1938,21 +1937,15 @@ const useBedData = () => {
         alert("更新に失敗しました。");
       }
     }
-  }, [bedStatuses, statusCollectionRef]); // 依存配列に bedStatuses を追加
+  }, [bedStatuses, statusCollectionRef]);
 
-  // 【★バグ修正★】 全ベッドリセット機能 (Optimistic Updateを削除)
+  // 全ベッドリセット機能
   const handleResetAll = useCallback(async () => {
     console.log("全ベッドを「連絡済」にリセットします...");
     
-    // ★ 修正点: 先にローカルstateを変更するロジックを削除
-    // setBedStatuses(newStatuses); 
-
-    // DBをバッチ更新 (onSnapshotが検知して画面が更新される)
     const batch = writeBatch(db);
     for (let i = 1; i <= totalBeds; i++) {
       const bedDocRef = doc(statusCollectionRef, i.toString());
-      // updateDoc ではなく setDoc(..., {merge: true}) または updateDoc を使う
-      // (updateDocはドキュメントが存在しないと失敗する可能性があるが、初期化後なのでupdateでOK)
       batch.update(bedDocRef, { status: "連絡済" });
     }
     try {
@@ -1960,48 +1953,12 @@ const useBedData = () => {
     } catch (err) {
       console.error("全リセットに失敗:", err);
       alert("リセットに失敗しました。ページを再読み込みしてください。");
-      // エラー時はonSnapshotが自動でDBの状態に戻すため、ローカルのロールバックは不要
     }
-  }, [statusCollectionRef]); // 依存配列
+  }, [statusCollectionRef]);
 
-  // 最終的なローディング状態
-  const isLoading = layoutLoading || statusLoading;
-
-  // 4. 親コンポーネントに返す
-  return { 
-    bedLayout, 
-    bedStatuses, 
-    loading: isLoading, 
-    error,
-    handleBedTap,
-    handleAdminBedTap,
-    handleResetAll 
-  };
-};
-
-// --- ベッドの状態に応じたスタイルを返すヘルパー関数 ---
-const getBedStatusStyle = (status) => {
-    switch (status) {
-        case '送迎可能': // 黄色点滅
-            return 'bg-yellow-400 text-black animate-pulse';
-        case '連絡済': // グレー
-            return 'bg-gray-400 text-white';
-        case '治療中': // 青
-        default:
-            return 'bg-blue-500 text-white';
-    }
-};
-
-// --- 1. 管理/モニター画面 (InpatientAdminPage) ---
-// 【★修正★】 リセットボタンと確認モーダルを追加
-const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisible, handleResetAll }) => {
-  // データとクリック関数を親(InpatientView)から props で受け取る
-  const [isLayoutEditMode, setIsLayoutEditMode] = useState(false); // レイアウト編集モード
-  
-  // 【★追加★】 リセット確認モーダルのための state
-  const [confirmResetModal, setConfirmResetModal] = useState(false);
-
-  // --- 【タスク6】 音声通知機能 (変更なし) ---
+  // ===========================================
+  // --- ★ 修正点: 音声通知機能 (ここから移動) ---
+  // ===========================================
   const prevStatusesRef = useRef(null); 
   const [isSpeaking, setIsSpeaking] = useState(false);
   const speechQueueRef = useRef([]); 
@@ -2054,21 +2011,11 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisib
       nowPlayingRef.current = null; 
       nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000);
     });
-  }, []); 
+  }, []); // 依存配列は空
 
-  // bedStatuses, isVisible 変更時のエフェクト (変更なし)
+  // bedStatuses 変更時のエフェクト (★ 修正点: isVisible の依存を削除)
   useEffect(() => {
-    if (!isVisible) {
-      // ( ... 音声停止ロジック ... )
-      if (currentAudioRef.current) {
-        currentAudioRef.current.pause();
-        currentAudioRef.current = null;
-      }
-      speechQueueRef.current = [];
-      setIsSpeaking(false);
-      nowPlayingRef.current = null; 
-      return; 
-    }
+    // if (!isVisible) { ... } // ← AdminPage にあったこの制御ブロックを削除
 
     if (!bedStatuses) return; 
     const prevStatuses = prevStatusesRef.current; 
@@ -2082,24 +2029,26 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisib
         const currentStatus = bedStatuses[bedNumStr];
         const previousStatus = prevStatuses[bedNumStr];
         
-        // 新規呼び出し
-        if (previousStatus === '治療中' && currentStatus === '送迎可能') {
+        // 新規呼び出し (治療中または連絡済から送迎可能になった)
+        if ((previousStatus === '治療中' || previousStatus === '連絡済') && currentStatus === '送迎可能') {
           newCalls.push(bedNumStr);
         }
         
-        // キャンセル
+        // キャンセル (送迎可能だったのに、それ以外になった = スタッフが黄→青に戻した時など)
         if (previousStatus === '送迎可能' && currentStatus !== '送迎可能') {
           cancelledBeds.push(bedNumStr);
         }
       }
 
-      // キャンセル処理
+      // キャンセル処理 (★ 修正点: このロジックがisVisibleに関係なく実行される)
       if (cancelledBeds.length > 0) {
         const cancelledBedSet = new Set(cancelledBeds);
+        // 待機キューから削除
         speechQueueRef.current = speechQueueRef.current.filter(
           bedNum => !cancelledBedSet.has(bedNum)
         );
         
+        // もし今再生中のがキャンセルされたら、即時停止
         if (nowPlayingRef.current && cancelledBedSet.has(nowPlayingRef.current)) {
           if (currentAudioRef.current) {
             currentAudioRef.current.pause(); 
@@ -2110,7 +2059,7 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisib
             nextSpeechTimerRef.current = null;
           }
           nowPlayingRef.current = null;
-          speakNextInQueue(); 
+          speakNextInQueue(); // 次の再生へ
         }
       }
 
@@ -2125,8 +2074,71 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisib
     }
     
     prevStatusesRef.current = bedStatuses;
-  }, [bedStatuses, isSpeaking, speakNextInQueue, isVisible]); 
+
+    // ★ 修正点: クリーンアップ関数を追加
+    // このフックがアンマウントされる時（例：施設切り替え時）に音声を停止する
+    return () => {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
+      if (nextSpeechTimerRef.current) {
+        clearTimeout(nextSpeechTimerRef.current);
+        nextSpeechTimerRef.current = null;
+      }
+      speechQueueRef.current = [];
+      setIsSpeaking(false);
+      nowPlayingRef.current = null; 
+    };
+  }, [bedStatuses, isSpeaking, speakNextInQueue]); // isVisible を依存配列から削除
   // --- 音声通知機能 ここまで ---
+
+  // 最終的なローディング状態
+  const isLoading = layoutLoading || statusLoading;
+
+  // 4. 親コンポーネントに返す
+  return { 
+    bedLayout, 
+    bedStatuses, 
+    loading: isLoading, 
+    error,
+    handleBedTap,
+    handleAdminBedTap,
+    handleResetAll,
+    isSpeaking // ★ 修正点: isSpeaking を返す
+  };
+};
+
+// --- ベッドの状態に応じたスタイルを返すヘルパー関数 ---
+const getBedStatusStyle = (status) => {
+    switch (status) {
+        case '送迎可能': // 黄色点滅
+            return 'bg-yellow-400 text-black animate-pulse';
+        case '連絡済': // グレー
+            return 'bg-gray-400 text-white';
+        case '治療中': // 青
+        default:
+            return 'bg-blue-500 text-white';
+    }
+};
+
+// --- 1. 管理/モニター画面 (InpatientAdminPage) ---
+// 【★修正★】 音声ロジックを削除し、isSpeaking を props で受け取る
+const InpatientAdminPage = ({ 
+  bedLayout, 
+  bedStatuses, 
+  handleAdminBedTap, 
+  handleResetAll, 
+  isSpeaking // ★ 修正点: props で isSpeaking を受け取る
+}) => {
+  // データとクリック関数を親(InpatientView)から props で受け取る
+  const [isLayoutEditMode, setIsLayoutEditMode] = useState(false); // レイアウト編集モード
+  
+  // 【★追加★】 リセット確認モーダルのための state
+  const [confirmResetModal, setConfirmResetModal] = useState(false);
+
+  // --- 【タスク6】 音声通知機能 ---
+  // ★ 修正点: useRef, useState(isSpeaking), useCallback, useEffect をすべて削除 (useBedData に移動)
 
   // 【★追加★】 リセットボタンの実行（モーダル閉鎖も）
   const onConfirmReset = () => {
@@ -2201,6 +2213,7 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisib
       )}
       
       {/* 音声再生中のインジケーター */}
+      {/* ★ 修正点: props から受け取った isSpeaking を使う */}
       {isSpeaking && 
         <div className="fixed bottom-5 right-5 bg-yellow-400 text-black font-bold py-2 px-4 rounded-full shadow-lg flex items-center z-50">
           <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
@@ -2296,8 +2309,7 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
 };
 
 // --- 3. 親コンポーネント (InpatientView) ---
-// 【★バグ修正★】 子コンポーネントに isVisible prop を渡す
-// 【★ 2025-11-03 修正 ★】 handleResetAll を InpatientAdminPage に渡す
+// 【★修正★】 isSpeaking をフックから受け取り AdminPage に渡す
 const InpatientView = ({ user, onGoBack }) => {
     const [currentPage, setCurrentPage] = useState('admin'); // 'admin' or 'staff'
     const hideCoolSelector = true;
@@ -2310,7 +2322,8 @@ const InpatientView = ({ user, onGoBack }) => {
         error,
         handleBedTap,
         handleAdminBedTap,
-        handleResetAll // ★ 修正点: handleResetAll をフックから受け取る
+        handleResetAll,
+        isSpeaking // ★ 修正点: isSpeaking をフックから受け取る
     } = useBedData();
 
     // 2. タブ切り替えボタン
@@ -2342,9 +2355,9 @@ const InpatientView = ({ user, onGoBack }) => {
                         bedLayout={bedLayout}
                         bedStatuses={bedStatuses}
                         handleAdminBedTap={handleAdminBedTap}
-                        // 【★バグ修正★】 画面が表示されているかどうかのフラグを渡す
-                        isVisible={currentPage === 'admin'}
-                        handleResetAll={handleResetAll} // ★ 修正点: InpatientAdminPage に props として渡す
+                        // isVisible={currentPage === 'admin'} // ← ★ 修正点: 削除
+                        handleResetAll={handleResetAll}
+                        isSpeaking={isSpeaking} // ← ★ 修正点: props として渡す
                     />
                 </div>
 
