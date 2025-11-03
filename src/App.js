@@ -1797,7 +1797,7 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
 // --- 【タスク4】 InpatientView 関連 ---
 
 // --- 共通カスタムフック (レイアウトとステータスのリアルタイム購読) ---
-// 【★ 2025-11-03 修正 ★】 スタッフ操作を「治療中 ⇔ 送迎可能」のトグルに戻す
+// 【★ 2025-11-03 修正 ★】 運用フローに合わせてクリックロジックを全面修正
 const useBedData = () => {
   const { selectedFacility, selectedDate } = useContext(AppContext);
   
@@ -1844,7 +1844,6 @@ const useBedData = () => {
   }, [layoutDocRef]); 
 
   // 【2. 状態(bed_statuses)の購読】
-  // (※初期値は「連絡済」のまま)
   useEffect(() => {
     setStatusLoading(true); 
     const q = query(statusCollectionRef);
@@ -1858,7 +1857,7 @@ const useBedData = () => {
         for (let i = 1; i <= totalBeds; i++) {
           const bedNumStr = i.toString();
           const bedDocRef = doc(statusCollectionRef, bedNumStr);
-          // 【★仕様通り★】 初期値は「連絡済」
+          // 【★ご要望 1★】 初期値を「連絡済」に変更
           batch.set(bedDocRef, { status: "連絡済" });
           initialStatuses[bedNumStr] = "連絡済";
         }
@@ -1888,12 +1887,13 @@ const useBedData = () => {
 
   // 【3. クリック処理】
 
-  // スタッフ用: 【★仕様変更★】 治療中(青) ⇔ 送迎可能(黄) のトグル
+  // 【★ご要望 3★】 スタッフ用: 治療中(青) ⇔ 送迎可能(黄) のトグル
   const handleBedTap = useCallback(async (bedNumber) => {
     const bedNumStr = bedNumber.toString();
     
     setBedStatuses(prevStatuses => {
-      const currentStatus = prevStatuses ? prevStatuses[bedNumStr] : '連絡済';
+      // ★ バグ修正: デフォルトフォールバックを「連絡済」に
+      const currentStatus = prevStatuses ? prevStatuses[bedNumStr] : '連絡済'; 
       let newStatus = currentStatus;
 
       // ★ 修正点: 青 ⇔ 黄 のトグルロジック
@@ -1902,7 +1902,7 @@ const useBedData = () => {
       } else if (currentStatus === '送迎可能') {
         newStatus = '治療中'; // Yellow -> Blue
       }
-      // (連絡済(Gray)は newStatus === currentStatus となり、何もしない)
+      // (「連絡済」(Gray) はクリックされても newStatus === currentStatus となり、何もしない)
 
       if (newStatus !== currentStatus) {
         const bedDocRef = doc(statusCollectionRef, bedNumStr);
@@ -1918,20 +1918,21 @@ const useBedData = () => {
     });
   }, [statusCollectionRef]); 
 
-  // 管理者用: 治療中 -> 送迎可能 -> 連絡済 -> 治療中 (循環は維持)
+  // 【★ご要望 2★】 管理者用: 連絡済(Gray) -> 治療中(Blue) -> 送迎可能(Yellow) -> 連絡済(Gray)
   const handleAdminBedTap = useCallback(async (bedNumber) => {
     const bedNumStr = bedNumber.toString();
 
     setBedStatuses(prevStatuses => {
+      // ★ バグ修正: デフォルトフォールバックを「連絡済」に
       const currentStatus = prevStatuses ? prevStatuses[bedNumStr] : '連絡済';
       let newStatus = currentStatus;
 
       if (currentStatus === '治療中') {
-        newStatus = '送迎可能';
+        newStatus = '送迎可能'; // Blue -> Yellow
       } else if (currentStatus === '送迎可能') {
-        newStatus = '連絡済';
+        newStatus = '連絡済'; // Yellow -> Gray
       } else if (currentStatus === '連絡済') {
-        newStatus = '治療中';
+        newStatus = '治療中'; // Gray -> Blue
       }
 
       if (newStatus !== currentStatus) {
@@ -1948,27 +1949,30 @@ const useBedData = () => {
     });
   }, [statusCollectionRef]); 
 
-  // 【★追加★】 全ベッドリセット機能 (変更なし)
+  // 【★ご要望 4★】 全ベッドリセット機能
   const handleResetAll = useCallback(async () => {
     console.log("全ベッドを「連絡済」にリセットします...");
+    // 1. Optimistic Update: まずローカルをリセット
     const newStatuses = {};
     for (let i = 1; i <= totalBeds; i++) {
       newStatuses[i.toString()] = "連絡済";
     }
-    setBedStatuses(newStatuses); // Optimistic Update
+    setBedStatuses(newStatuses);
 
+    // 2. 裏側でDBをバッチ更新
     const batch = writeBatch(db);
     for (let i = 1; i <= totalBeds; i++) {
       const bedDocRef = doc(statusCollectionRef, i.toString());
       batch.update(bedDocRef, { status: "連絡済" });
     }
     try {
-      await batch.commit();
+      await batch.commit(); // DBに一括書き込み
     } catch (err) {
       console.error("全リセットに失敗:", err);
       alert("リセットに失敗しました。ページを再読み込みしてください。");
+      // エラー時は onSnapshot が自動で元に戻す
     }
-  }, [statusCollectionRef]);
+  }, [statusCollectionRef]); // 依存配列
 
   // 最終的なローディング状態
   const isLoading = layoutLoading || statusLoading;
@@ -1981,7 +1985,7 @@ const useBedData = () => {
     error,
     handleBedTap,
     handleAdminBedTap,
-    handleResetAll 
+    handleResetAll // ★ リセット関数を返す
   };
 };
 
@@ -1999,44 +2003,41 @@ const getBedStatusStyle = (status) => {
 };
 
 // --- 1. 管理/モニター画面 (InpatientAdminPage) ---
-// 【★修正★】 音声の即時キャンセル機能を追加
-const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisible }) => {
+// 【★修正★】 リセットボタンと確認モーダルを追加
+const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisible, handleResetAll }) => {
   // データとクリック関数を親(InpatientView)から props で受け取る
   const [isLayoutEditMode, setIsLayoutEditMode] = useState(false); // レイアウト編集モード
-
-  // --- 【タスク6】 音声通知機能 ---
-  const prevStatusesRef = useRef(null); // 前回のベッド状態
-  const [isSpeaking, setIsSpeaking] = useState(false); // 再生中フラグ
-  const speechQueueRef = useRef([]); // 読み上げ待機キュー
-  const currentAudioRef = useRef(null); // 現在再生中のAudioオブジェクト
-  const nextSpeechTimerRef = useRef(null); // 次の再生までのタイマー
   
-  // 【★追加★】 現在再生中のベッド番号を管理
+  // 【★追加★】 リセット確認モーダルのための state
+  const [confirmResetModal, setConfirmResetModal] = useState(false);
+
+  // --- 【タスク6】 音声通知機能 (変更なし) ---
+  const prevStatusesRef = useRef(null); 
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const speechQueueRef = useRef([]); 
+  const currentAudioRef = useRef(null);
+  const nextSpeechTimerRef = useRef(null);
   const nowPlayingRef = useRef(null); 
 
   // キューから取り出して音声再生を実行する関数
   const speakNextInQueue = useCallback(() => {
-    // 既存のタイマーがあればクリア
     if (nextSpeechTimerRef.current) {
       clearTimeout(nextSpeechTimerRef.current);
       nextSpeechTimerRef.current = null;
     }
-    // キューが空なら再生終了
     if (speechQueueRef.current.length === 0) {
       setIsSpeaking(false); 
-      nowPlayingRef.current = null; // ★追加
+      nowPlayingRef.current = null; 
       return;
     }
 
     setIsSpeaking(true);
-    const bedNumber = speechQueueRef.current.shift(); // キューからベッド番号を取り出す
-    nowPlayingRef.current = bedNumber; // ★追加: 再生中のベッドを記録
+    const bedNumber = speechQueueRef.current.shift(); 
+    nowPlayingRef.current = bedNumber; 
     
-    // 仕様通り「〇番ベッド、送迎可能です。」というテキスト
     const textToSpeak = `${bedNumber}番ベッド、送迎可能です。`;
     const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app"; 
 
-    // Cloud Functionを呼び出して音声データを取得
     fetch(functionUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2048,11 +2049,9 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisib
         const audio = new Audio("data:audio/mp3;base64," + data.audioContent);
         currentAudioRef.current = audio;
         audio.play();
-        // 再生終了時の処理
         audio.onended = () => {
           currentAudioRef.current = null;
-          nowPlayingRef.current = null; // ★追加: 再生終了
-          // 1秒待って次のキューへ
+          nowPlayingRef.current = null; 
           nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000);
         };
       } else {
@@ -2062,110 +2061,125 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisib
     .catch((error) => {
       console.error("Speech synthesis failed:", error);
       currentAudioRef.current = null;
-      nowPlayingRef.current = null; // ★追加: 再生終了
-      // エラー時も1秒待って次へ
+      nowPlayingRef.current = null; 
       nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000);
     });
-  }, []); // この関数自体は再生成不要
+  }, []); 
 
-  // bedStatuses（ベッドの状態リスト）が変わるたびに実行されるエフェクト
+  // bedStatuses, isVisible 変更時のエフェクト (変更なし)
   useEffect(() => {
-    // ★ 画面が非表示 (isVisible=false) の場合は、音声ロジックを一切実行しない
     if (!isVisible) {
-      // もし非表示になる瞬間に再生中だったら、音声を停止する
+      // ( ... 音声停止ロジック ... )
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
         currentAudioRef.current = null;
       }
-      // 読み上げキューもクリアする
       speechQueueRef.current = [];
       setIsSpeaking(false);
-      nowPlayingRef.current = null; // ★追加
-      // ★ここで処理を中断
+      nowPlayingRef.current = null; 
       return; 
     }
 
-    // --- 以下は isVisible が true の場合のみ実行 ---
-    if (!bedStatuses) return; // 状態データがまだない場合は中断
-    const prevStatuses = prevStatusesRef.current; // 前回の状態を取得
+    if (!bedStatuses) return; 
+    const prevStatuses = prevStatusesRef.current; 
 
-    // 前回の状態リストが存在する場合（＝初回読み込み時でない場合）のみ比較
     if (prevStatuses) { 
-      const newCalls = []; // 新しく「送迎可能」になったベッド
-      const cancelledBeds = []; // ★追加: 「送迎可能」から変更されたベッド
+      const newCalls = []; 
+      const cancelledBeds = []; 
 
-      // 全ベッドをループして状態変化をチェック
       for (let i = 1; i <= totalBeds; i++) {
         const bedNumStr = i.toString();
         const currentStatus = bedStatuses[bedNumStr];
         const previousStatus = prevStatuses[bedNumStr];
         
-        // 1. 新規呼び出しの検出
+        // 新規呼び出し
         if (previousStatus === '治療中' && currentStatus === '送迎可能') {
           newCalls.push(bedNumStr);
         }
         
-        // 2. ★追加: キャンセルの検出
+        // キャンセル
         if (previousStatus === '送迎可能' && currentStatus !== '送迎可能') {
           cancelledBeds.push(bedNumStr);
         }
       }
 
-      // 3. ★追加: キャンセル処理
+      // キャンセル処理
       if (cancelledBeds.length > 0) {
         const cancelledBedSet = new Set(cancelledBeds);
-        // 3a. 再生待機キューから削除
         speechQueueRef.current = speechQueueRef.current.filter(
           bedNum => !cancelledBedSet.has(bedNum)
         );
         
-        // 3b. もし今再生中のものがキャンセルされたら、即時停止
         if (nowPlayingRef.current && cancelledBedSet.has(nowPlayingRef.current)) {
           if (currentAudioRef.current) {
-            currentAudioRef.current.pause(); // 音声を停止
+            currentAudioRef.current.pause(); 
             currentAudioRef.current = null;
           }
           if (nextSpeechTimerRef.current) {
-            clearTimeout(nextSpeechTimerRef.current); // 次のタイマーもキャンセル
+            clearTimeout(nextSpeechTimerRef.current); 
             nextSpeechTimerRef.current = null;
           }
           nowPlayingRef.current = null;
-          // 即座に次のキュー（もしあれば）の再生を開始
           speakNextInQueue(); 
         }
       }
 
-      // 4. 新規呼び出し処理
+      // 新規呼び出し処理
       if (newCalls.length > 0) {
-        // ベッド番号順にソート
         newCalls.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-        speechQueueRef.current.push(...newCalls); // キューに追加
-        // もし現在再生中でなければ、再生を開始する
+        speechQueueRef.current.push(...newCalls);
         if (!isSpeaking) {
           speakNextInQueue();
         }
       }
     }
     
-    // 現在の状態を「前回の状態」として保存
     prevStatusesRef.current = bedStatuses;
-  }, [bedStatuses, isSpeaking, speakNextInQueue, isVisible]); // isVisibleが変更された時も実行
+  }, [bedStatuses, isSpeaking, speakNextInQueue, isVisible]); 
   // --- 音声通知機能 ここまで ---
+
+  // 【★追加★】 リセットボタンの実行（モーダル閉鎖も）
+  const onConfirmReset = () => {
+    handleResetAll(); // 親から渡されたリセット関数を実行
+    setConfirmResetModal(false); // モーダルを閉じる
+  };
 
   // --- レンダリング ---
   return (
     <div className="space-y-6">
+      {/* 【★追加★】 リセット確認モーダル */}
+      {confirmResetModal && (
+        <ConfirmationModal
+          title="全ベッドのリセット確認"
+          message="すべてのベッドを初期状態（連絡済/グレー）に戻します。よろしいですか？"
+          onConfirm={onConfirmReset}
+          onCancel={() => setConfirmResetModal(false)}
+          confirmText="リセット実行"
+          confirmColor="red"
+        />
+      )}
+
       {/* ヘッダーと編集ボタン */}
       <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow">
         <h2 className="text-2xl font-bold">管理・モニター画面</h2>
-        <button
-          onClick={() => setIsLayoutEditMode(!isLayoutEditMode)}
-          className={`font-bold py-2 px-6 rounded-lg transition ${
-            isLayoutEditMode ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-500 hover:bg-yellow-600'
-          } text-white`}
-        >
-          {isLayoutEditMode ? "編集を終了" : "ベッド配置を編集"}
-        </button>
+        {/* 【★修正★】 ボタンをflexコンテナで囲む */}
+        <div className="flex items-center space-x-2">
+          {/* 【★追加★】 リセットボタン */}
+          <button
+            onClick={() => setConfirmResetModal(true)}
+            className="font-bold py-2 px-6 rounded-lg transition bg-red-600 hover:bg-red-700 text-white"
+          >
+            全ベッドリセット
+          </button>
+          <button
+            onClick={() => setIsLayoutEditMode(!isLayoutEditMode)}
+            className={`font-bold py-2 px-6 rounded-lg transition ${
+              isLayoutEditMode ? 'bg-gray-600 hover:bg-gray-700' : 'bg-yellow-500 hover:bg-yellow-600'
+            } text-white`}
+          >
+            {isLayoutEditMode ? "編集を終了" : "ベッド配置を編集"}
+          </button>
+        </div>
       </div>
 
       {/* レイアウト編集モード（true）の場合 */}
@@ -2177,9 +2191,9 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisib
       ) : (
         /* モニターモード（false）の場合 */
         <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-hidden">
-          {/* bedLayoutとbedStatusesの両方が読み込まれてから描画 */}
           {bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
-            const status = bedStatuses[bedNumber] || '治療中';
+            // 【★修正★】 デフォルトフォールバックを「連絡済」に
+            const status = bedStatuses[bedNumber] || '連絡済'; 
             const statusStyle = getBedStatusStyle(status);
             
             return (
@@ -2187,7 +2201,6 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, isVisib
                 key={bedNumber}
                 style={{ position: 'absolute', top, left }}
                 className={`p-3 rounded-lg font-bold shadow-md w-20 h-16 flex justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-110`}
-                // 親から渡された handleAdminBedTap（循環クリック）を呼び出す
                 onClick={() => handleAdminBedTap(bedNumber)} 
               >
                 {bedNumber}
@@ -2271,8 +2284,7 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
           const status = bedStatuses[bedNumber] || '連絡済'; // 初期値も連絡済に
           const statusStyle = getBedStatusStyle(status);
           
-          // 【★修正★】 「連絡済」(Gray) の場合のみ操作不可(disabled)にする
-          // (青と黄はトグル操作可能)
+          // 【★ご要望 3★】 「連絡済」(Gray) の場合のみ操作不可(disabled)にする
           const isDisabled = status === '連絡済';
 
           return (
