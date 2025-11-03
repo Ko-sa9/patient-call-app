@@ -2014,10 +2014,9 @@ const useBedData = (currentPage) => { // ★ 修正点: currentPage を引数で
     });
   }, []); // 依存配列は空
 
-  // bedStatuses 変更時のエフェクト (★ 修正点: isVisible の依存を削除)
+  // ★ 修正点: メインのロジック用useEffect
+  // bedStatuses 変更時のエフェクト
   useEffect(() => {
-    // if (!isVisible) { ... } // ← AdminPage にあったこの制御ブロックを削除
-
     if (!bedStatuses) return; 
     const prevStatuses = prevStatusesRef.current; 
 
@@ -2041,7 +2040,7 @@ const useBedData = (currentPage) => { // ★ 修正点: currentPage を引数で
         }
       }
 
-      // キャンセル処理 (★ 修正点: このロジックがisVisibleに関係なく実行される)
+      // キャンセル処理 (タブ位置に関わらず実行)
       if (cancelledBeds.length > 0) {
         const cancelledBedSet = new Set(cancelledBeds);
         // 待機キューから削除
@@ -2077,9 +2076,19 @@ const useBedData = (currentPage) => { // ★ 修正点: currentPage を引数で
     }
     
     prevStatusesRef.current = bedStatuses;
-
-    // ★ 修正点: クリーンアップ関数を追加
-    // このフックがアンマウントされる時（例：施設切り替え時）に音声を停止する
+    
+    // ★ 修正点: このuseEffectからクリーンアップ関数を削除
+    // (削除しないと、bedStatusesが変更されるたびに音声が止まってしまうため)
+    /*
+    return () => {
+        // ... (このブロック全体を削除)
+    };
+    */
+  }, [bedStatuses, isSpeaking, speakNextInQueue, currentPage]); // ★ 修正点: 依存配列
+  
+  // ★ 修正点: アンマウント時（施設切り替え時など）専用のクリーンアップuseEffect
+  useEffect(() => {
+    // このreturn関数は、useBedDataフックが破棄される時だけ実行される
     return () => {
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
@@ -2093,7 +2102,7 @@ const useBedData = (currentPage) => { // ★ 修正点: currentPage を引数で
       setIsSpeaking(false);
       nowPlayingRef.current = null; 
     };
-  }, [bedStatuses, isSpeaking, speakNextInQueue, currentPage]); // ★ 修正点: 依存配列に currentPage を追加
+  }, []); // 依存配列を空にする
   // --- 音声通知機能 ここまで ---
 
   // 最終的なローディング状態
