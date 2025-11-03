@@ -1755,22 +1755,29 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
 // --- 【タスク4】 InpatientView 関連 ---
 
 // --- 共通カスタムフック (レイアウトとステータスのリアルタイム購読) ---
-// 【★根本修正★】 データ構造をサブコレクションに変更し、リアルタイム性能を改善
+// 【★最終修正★】 useMemoで参照を安定化させ、無限再描画ループを完全解消
 const useBedData = () => {
   const { selectedFacility, selectedDate } = useContext(AppContext);
   
   // 状態
   const [bedLayout, setBedLayout] = useState(null);
-  const [bedStatuses, setBedStatuses] = useState(null); // { "1": "治療中", "2": "送迎可能", ... }
+  const [bedStatuses, setBedStatuses] = useState(null); 
   const [layoutLoading, setLayoutLoading] = useState(true);
-  const [statusLoading, setStatusLoading] = useState(true);
+  const [statusLoading, setStatusLoading] = useState(true); // ★ 初期値 true
   const [error, setError] = useState(null);
 
-  // Firestore参照
-  const layoutDocRef = doc(db, 'bedLayouts', selectedFacility);
-  // 【★変更★】 サブコレクション "beds" への参照
-  const statusCollectionId = `${selectedFacility}_${selectedDate}`;
-  const statusCollectionRef = collection(db, 'bed_statuses', statusCollectionId, 'beds');
+  // --- ★ 修正点: useMemoを使って参照を安定化 ---
+  // selectedFacility が変わらない限り、layoutDocRef は再生成されない
+  const layoutDocRef = useMemo(() => {
+    return doc(db, 'bedLayouts', selectedFacility);
+  }, [selectedFacility]);
+
+  // selectedFacility または selectedDate が変わらない限り、statusCollectionRef は再生成されない
+  const statusCollectionRef = useMemo(() => {
+    const statusCollectionId = `${selectedFacility}_${selectedDate}`;
+    return collection(db, 'bed_statuses', statusCollectionId, 'beds');
+  }, [selectedFacility, selectedDate]);
+  // --- 修正ここまで ---
 
   // 【1. レイアウトの購読】 (変更なし)
   useEffect(() => {
@@ -1795,12 +1802,11 @@ const useBedData = () => {
       setLayoutLoading(false);
     });
     return () => unsubscribe();
-  }, [layoutDocRef]); // 施設が変わった時だけ再実行
+  }, [layoutDocRef]); // layoutDocRef は useMemo で安定化されている
 
-  // 【2. ★状態(bed_statuses)の購読★】
+  // 【2. ★状態(bed_statuses)の購読★】 (変更なし)
   useEffect(() => {
-    setStatusLoading(true); 
-    // サブコレクション 'beds' 全体をクエリ
+    // ★ 修正点: setStatusLoading(true) を *削除* (初期値のtrueを使う)
     const q = query(statusCollectionRef);
 
     const unsubscribe = onSnapshot(q, async (querySnapshot) => {
@@ -1811,14 +1817,13 @@ const useBedData = () => {
         const batch = writeBatch(db);
         for (let i = 1; i <= totalBeds; i++) {
           const bedNumStr = i.toString();
-          // ドキュメントIDをベッド番号にする (例: .../beds/1)
           const bedDocRef = doc(statusCollectionRef, bedNumStr);
           batch.set(bedDocRef, { status: "治療中" });
           initialStatuses[bedNumStr] = "治療中";
         }
         try {
-          await batch.commit(); // 20床分のドキュメントをバッチ作成
-          setBedStatuses(initialStatuses); // ローカルstateを更新
+          await batch.commit(); 
+          setBedStatuses(initialStatuses); 
         } catch (err) {
           console.error("ステータスの初期化に失敗:", err);
           setError("ステータスの初期化に失敗しました。");
@@ -1826,78 +1831,94 @@ const useBedData = () => {
       } else {
         // --- データ更新ロジック ---
         const newStatuses = {};
-        // 取得した全ドキュメントをループ
         querySnapshot.forEach((doc) => {
-          // doc.id がベッド番号 ( "1", "2", ... )
           newStatuses[doc.id] = doc.data().status;
         });
-        setBedStatuses(newStatuses); // 結合したオブジェクトでstateを更新
+        setBedStatuses(newStatuses); 
       }
-      setStatusLoading(false);
+      setStatusLoading(false); // ★ 読み込み完了
     }, (err) => {
       console.error("ステータスの購読に失敗:", err);
       setError("ステータスの読み込みに失敗しました。");
       setStatusLoading(false);
     });
     return () => unsubscribe();
-  }, [statusCollectionRef]); // 日付や施設が変わった時だけ再実行
+  }, [statusCollectionRef]); // statusCollectionRef は useMemo で安定化されている
 
   // 【3. ★ クリック処理 ★】
-  // (DB構造の変更に合わせて、更新対象のドキュメント参照を変更)
+  // (関数型アップデート ＋ サブコレクション対応)
 
   // スタッフ用: 治療中 ⇔ 送迎可能
   const handleBedTap = useCallback(async (bedNumber) => {
     const bedNumStr = bedNumber.toString();
-    if (!bedStatuses) return;
-    const currentStatus = bedStatuses[bedNumStr] || '治療中';
     
-    let newStatus = currentStatus;
-    if (currentStatus === '治療中') {
-      newStatus = '送迎可能';
-    } else if (currentStatus === '送迎可能') {
-      newStatus = '治療中';
-    }
+    // ★ 修正点: 関数型アップデート (prevStatuses を使う)
+    setBedStatuses(prevStatuses => {
+      // 現在の状態を *最新の* state (prevStatuses) から取得
+      const currentStatus = prevStatuses ? prevStatuses[bedNumStr] : '治療中';
+      let newStatus = currentStatus;
 
-    if (newStatus !== currentStatus) {
-      // ★ 修正点: 更新対象を .../beds/{bedNumber} ドキュメントに変更
-      const bedDocRef = doc(statusCollectionRef, bedNumStr);
-      try {
-        // {status: "..."} を書き込む
-        await updateDoc(bedDocRef, { status: newStatus });
-      } catch (err) {
-        console.error("更新失敗:", err);
-        alert("更新に失敗しました。");
+      if (currentStatus === '治療中') {
+        newStatus = '送迎可能';
+      } else if (currentStatus === '送迎可能') {
+        newStatus = '治療中';
       }
-    }
-  }, [bedStatuses, statusCollectionRef]); // 依存配列を変更
+
+      if (newStatus !== currentStatus) {
+        // ★ DB更新ロジック (サブコレクション対応)
+        const bedDocRef = doc(statusCollectionRef, bedNumStr);
+        updateDoc(bedDocRef, { status: newStatus })
+          .catch(err => {
+            console.error("更新失敗、ロールバック:", err);
+            // onSnapshotが自動でロールバックする
+            alert("更新に失敗しました。");
+          });
+        // ★ローカルのstateを*先に*返す (瞬時に画面が変わる)
+        return { ...prevStatuses, [bedNumStr]: newStatus };
+      }
+      
+      // 変更がない場合は元のstateを返す
+      return prevStatuses;
+    });
+  // ★ 修正点: 依存配列を [statusCollectionRef] に変更
+  }, [statusCollectionRef]); 
 
   // 管理者用: 治療中 -> 送迎可能 -> 連絡済 -> 治療中
   const handleAdminBedTap = useCallback(async (bedNumber) => {
     const bedNumStr = bedNumber.toString();
-    if (!bedStatuses) return;
-    const currentStatus = bedStatuses[bedNumStr] || '治療中';
-    
-    let newStatus = currentStatus;
-    if (currentStatus === '治療中') {
-      newStatus = '送迎可能';
-    } else if (currentStatus === '送迎可能') {
-      newStatus = '連絡済';
-    } else if (currentStatus === '連絡済') {
-      newStatus = '治療中';
-    }
 
-    if (newStatus !== currentStatus) {
-      // ★ 修正点: 更新対象を .../beds/{bedNumber} ドキュメントに変更
-      const bedDocRef = doc(statusCollectionRef, bedNumStr);
-      try {
-        // {status: "..."} を書き込む
-        await updateDoc(bedDocRef, { status: newStatus });
-      } catch (err) {
-        console.error("更新失敗:", err);
-        alert("更新に失敗しました。");
+    // ★ 修正点: 関数型アップデート (prevStatuses を使う)
+    setBedStatuses(prevStatuses => {
+      // 現在の状態を *最新の* state (prevStatuses) から取得
+      const currentStatus = prevStatuses ? prevStatuses[bedNumStr] : '治療中';
+      let newStatus = currentStatus;
+
+      if (currentStatus === '治療中') {
+        newStatus = '送迎可能';
+      } else if (currentStatus === '送迎可能') {
+        newStatus = '連絡済';
+      } else if (currentStatus === '連絡済') {
+        newStatus = '治療中';
       }
-    }
-  }, [bedStatuses, statusCollectionRef]); // 依存配列を変更
+
+      if (newStatus !== currentStatus) {
+        // ★ DB更新ロジック (サブコレクション対応)
+        const bedDocRef = doc(statusCollectionRef, bedNumStr);
+        updateDoc(bedDocRef, { status: newStatus })
+          .catch(err => {
+            console.error("更新失敗、ロールバック:", err);
+            // onSnapshotが自動でロールバックする
+            alert("更新に失敗しました。");
+          });
+      
+        // ★ローカルのstateを*先に*返す (瞬時に画面が変わる)
+        return { ...prevStatuses, [bedNumStr]: newStatus };
+      }
+      // 変更がない場合は元のstateを返す
+      return prevStatuses;
+    });
+  // ★ 修正点: 依存配列を [statusCollectionRef] に変更
+  }, [statusCollectionRef]); 
 
   // 最終的なローディング状態
   const isLoading = layoutLoading || statusLoading;
@@ -1908,8 +1929,8 @@ const useBedData = () => {
     bedStatuses, 
     loading: isLoading, 
     error,
-    handleBedTap,
-    handleAdminBedTap
+    handleBedTap,       // ★ 安定化された関数
+    handleAdminBedTap   // ★ 安定化された関数
   };
 };
 
