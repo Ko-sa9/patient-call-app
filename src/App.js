@@ -1569,7 +1569,7 @@ const FacilitySelectionPage = ({ onSelectFacility, onGoBack, selectedRole}) => {
             <h1 className="text-3xl font-bold text-gray-800 mb-4">施設を選択してください</h1>
             <p className="text-gray-600 mb-8">表示する施設を選択してください。</p>
             <div className="space-y-4">
-                {FACILITIES.map(facility => (
+                {facilitiesToShow.map(facility => (
                     <button
                         key={facility}
                         onClick={() => onSelectFacility(facility)}
