@@ -1553,7 +1553,17 @@ const PublicView = ({ user, onGoBack }) => {
 
 // --- Login / Role Selection ---
 // 施設選択ページ。
-const FacilitySelectionPage = ({ onSelectFacility, onGoBack }) => (
+const FacilitySelectionPage = ({ onSelectFacility, onGoBack, selectedRole}) => {
+
+    // ★ 修正点: このブロックを丸ごと追加
+    // ----------------------------------------------------
+    // selectedRole が 'public'（公開用）の場合、「入院透析室」を除外する
+    // それ以外（スタッフ用）の場合は、全ての施設を表示する
+    const facilitiesToShow = selectedRole === 'public'
+        ? FACILITIES.filter(f => f !== "入院透析室") // "入院透析室" 以外の施設リスト
+        : FACILITIES; // 全ての施設リスト
+    // ----------------------------------------------------
+    return (
     <div className="flex items-center justify-center h-screen bg-gray-100">
         <div className="text-center p-8 bg-white rounded-xl shadow-lg max-w-md w-full">
             <h1 className="text-3xl font-bold text-gray-800 mb-4">施設を選択してください</h1>
@@ -1574,7 +1584,8 @@ const FacilitySelectionPage = ({ onSelectFacility, onGoBack }) => (
             </button>
         </div>
     </div>
-);
+    )
+};
 
 // スタッフ用のパスワード認証モーダル。
 const PasswordModal = ({ onSuccess, onCancel }) => {
@@ -2674,8 +2685,7 @@ export default function App() {
                 {/* --- 画面切り替えロジック --- */}
                 {viewMode === 'login' && <RoleSelectionPage onSelectRole={handleRoleSelect} />}
                 {viewMode === 'password' && <PasswordModal onSuccess={handlePasswordSuccess} onCancel={() => setViewMode('login')} />}
-                {viewMode === 'facilitySelection' && <FacilitySelectionPage onSelectFacility={handleFacilitySelect} onGoBack={() => setViewMode('login')} />}
-                {/* 【タスク8】 スタッフ用ビューの条件分岐 */}
+                {viewMode === 'facilitySelection' && <FacilitySelectionPage onSelectFacility={handleFacilitySelect} onGoBack={() => setViewMode('login')} selectedRole={selectedRole} />} 
                 {viewMode === 'staff' && selectedFacility === "入院透析室" && (
                     <InpatientView user={user} onGoBack={handleGoBack} />
                 )}
