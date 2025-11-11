@@ -16,7 +16,8 @@ const PatientQrCodeCard = ({ patient }) => {
             {/* 左半分 */}
             <div className="flex-1 flex flex-col items-center justify-center h-full text-center">
                 <h3 className="text-lg font-bold mb-1">{patient.name} 様</h3>
-                <p className="text-sm mb-2">ID: {patient.patientId}</p>
+                {/* ★ 修正点: hidden print:block を追加 */}
+                <p className="text-sm mb-2 hidden print:block">ID: {patient.patientId}</p>
                 <QRCodeSVG value={value} size={qrSize} />
             </div>
 
@@ -26,7 +27,8 @@ const PatientQrCodeCard = ({ patient }) => {
             {/* 右半分 */}
             <div className="flex-1 flex flex-col items-center justify-center h-full text-center">
                 <h3 className="text-lg font-bold mb-1">{patient.name} 様</h3>
-                <p className="text-sm mb-2">ID: {patient.patientId}</p>
+                {/* ★ 修正点: hidden print:block を追加 */}
+                <p className="text-sm mb-2 hidden print:block">ID: {patient.patientId}</p>
                 <QRCodeSVG value={value} size={qrSize} />
             </div>
         </div>
