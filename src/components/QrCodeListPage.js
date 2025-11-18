@@ -39,7 +39,7 @@ const PatientQrCodeCard = ({ patient }) => {
 const QrCodeListPage = ({ patients, onBack }) => {
   // 選択された患者のIDを管理するためのstate
   const [selectedIds, setSelectedIds] = useState([]);
-  // ★ 追加: 検索キーワードを管理するstate
+  // 検索キーワードを管理するstate
   const [searchTerm, setSearchTerm] = useState('');
 
   // チェックボックスが変更されたときの処理
@@ -54,7 +54,7 @@ const QrCodeListPage = ({ patients, onBack }) => {
     });
   };
 
-  // ★ 修正: 表示対象の患者リストを検索ワードでフィルタリング
+  // 表示対象の患者リストを検索ワードでフィルタリング
   const filteredPatients = patients.filter(patient => {
     if (!searchTerm) return true; // 検索語がなければ全員表示
     const term = searchTerm.toLowerCase();
@@ -66,7 +66,7 @@ const QrCodeListPage = ({ patients, onBack }) => {
   });
 
   // 全選択/全解除の処理
-  // ★ 修正: フィルタリングされている患者のみを対象にする
+  // フィルタリングされている患者のみを対象にする
   const handleSelectAll = () => {
     const targetIds = filteredPatients.filter(p => p.patientId).map(p => p.id);
     // 現在の選択状態に、表示中の全IDを追加（重複排除）
@@ -74,7 +74,7 @@ const QrCodeListPage = ({ patients, onBack }) => {
   };
 
   const handleDeselectAll = () => {
-    // ★ 修正: 表示中の患者のみ選択解除する（他の患者の選択は残す）
+    // 表示中の患者のみ選択解除する（他の患者の選択は残す）
     const targetIds = filteredPatients.map(p => p.id);
     setSelectedIds(prev => prev.filter(id => !targetIds.includes(id)));
   };
@@ -120,12 +120,16 @@ const QrCodeListPage = ({ patients, onBack }) => {
       </style>
       
       {/* 印刷時には表示しないヘッダー部分 */}
-      {/* ★ 修正: レイアウトを調整し、検索バーを追加 */}
+      {/* ★ 修正: タイトルを左端、検索バーとボタンを右端に配置 */}
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 no-print bg-white p-4 rounded-lg shadow gap-4">
-        <div className="w-full md:w-auto">
-            <h2 className="text-2xl font-bold mb-2">患者QRコード一覧</h2>
-            {/* ★ 追加: 検索入力フィールド */}
-            <div className="relative">
+        {/* 左側: タイトル */}
+        <h2 className="text-2xl font-bold text-gray-800">患者QRコード一覧</h2>
+        
+        {/* 右側: 検索バーとボタン群を横並びにするコンテナ */}
+        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+            
+            {/* 検索入力フィールド (ここへ移動) */}
+            <div className="relative w-full md:w-auto">
                 <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -133,41 +137,42 @@ const QrCodeListPage = ({ patients, onBack }) => {
                 </span>
                 <input
                     type="search"
-                    placeholder="名前、ID、ふりがなで検索..."
+                    placeholder="名前、ID、ふりがな"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 p-2 border border-gray-300 rounded-md w-full md:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                    className="pl-10 p-2 border border-gray-300 rounded-md w-full md:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
                 />
             </div>
-        </div>
         
-        <div className="flex items-center space-x-2">
-          <button title="表示中をすべて選択" onClick={handleSelectAll} className="p-3 rounded-lg bg-green-600 hover:bg-green-700 text-white transition">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </button>
-          <button title="表示中をすべて解除" onClick={handleDeselectAll} className="p-3 rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white transition">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </button>
-          <button title="選択したものを印刷" onClick={() => window.print()} className="p-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-            </svg>
-          </button>
-          <button title="管理画面に戻る" onClick={onBack} className="p-3 rounded-lg bg-gray-500 hover:bg-gray-600 text-white transition">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
-            </svg>
-          </button>
+            {/* ボタン群 */}
+            <div className="flex items-center space-x-2">
+              <button title="表示中をすべて選択" onClick={handleSelectAll} className="p-3 rounded-lg bg-green-600 hover:bg-green-700 text-white transition">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+              <button title="表示中をすべて解除" onClick={handleDeselectAll} className="p-3 rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white transition">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+              <button title="選択したものを印刷" onClick={() => window.print()} className="p-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                </svg>
+              </button>
+              <button title="管理画面に戻る" onClick={onBack} className="p-3 rounded-lg bg-gray-500 hover:bg-gray-600 text-white transition">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                </svg>
+              </button>
+            </div>
         </div>
       </div>
 
       {/* QRコードのリスト */}
       <div className="print-content bg-white p-4 rounded-lg shadow-inner grid grid-cols-1 md:print-grid md:grid-cols-2 gap-4">
-        {/* ★ 修正: filteredPatients を使用して描画 */}
+        {/* フィルタリングされた患者リストを描画 */}
         {filteredPatients.length > 0 ? (
             filteredPatients
             .sort((a, b) => a.bed.localeCompare(b.bed, undefined, { numeric: true })) // ベッド番号でソート
