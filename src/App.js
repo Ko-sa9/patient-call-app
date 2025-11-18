@@ -1469,7 +1469,7 @@ const GlobalControls = ({ hideCoolSelector = false }) => {
 // アプリ全体のレイアウトを定義するコンポーネント（ヘッダー、メインコンテンツ、フッター）。
 const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) => (
     <div className="min-h-screen bg-gray-50 font-sans">
-        <nav className="bg-white shadow-md p-3 sm:p-4 mb-8 sticky top-0 z-40">
+        <nav className="bg-white shadow-md p-3 sm:p-4 mb-8 sticky top-0 z-40 print:hidden">
             <div className="max-w-7xl mx-auto px-4">
                 <div className="flex flex-wrap justify-between items-center">
                     <div className="flex items-center">
@@ -1494,7 +1494,7 @@ const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) =
             </div>
         </nav>
         <main className="max-w-7xl mx-auto px-4 pb-8">{children}</main>
-        <footer className="text-center text-sm text-gray-500 py-6 mt-8 border-t"><p>ユーザーID: <span className="font-mono text-xs">{user?.uid}</span></p></footer>
+        <footer className="text-center text-sm text-gray-500 py-6 mt-8 border-t print:hidden"><p>ユーザーID: <span className="font-mono text-xs">{user?.uid}</span></p></footer>
     </div>
 );
 
