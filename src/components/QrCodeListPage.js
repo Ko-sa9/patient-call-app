@@ -16,7 +16,7 @@ const PatientQrCodeCard = ({ patient }) => {
             {/* 左半分 */}
             <div className="flex-1 flex flex-col items-center justify-center h-full text-center">
                 <h3 className="text-lg font-bold mb-1">{patient.name} 様</h3>
-                {/* ★ 修正点: hidden print:block を追加 */}
+                {/* 画面上では非表示(hidden)、印刷時のみ表示(print:block) */}
                 <p className="text-sm mb-2 hidden print:block">ID: {patient.patientId}</p>
                 <QRCodeSVG value={value} size={qrSize} />
             </div>
@@ -27,20 +27,20 @@ const PatientQrCodeCard = ({ patient }) => {
             {/* 右半分 */}
             <div className="flex-1 flex flex-col items-center justify-center h-full text-center">
                 <h3 className="text-lg font-bold mb-1">{patient.name} 様</h3>
-                {/* ★ 修正点: hidden print:block を追加 */}
+                {/* 画面上では非表示(hidden)、印刷時のみ表示(print:block) */}
                 <p className="text-sm mb-2 hidden print:block">ID: {patient.patientId}</p>
                 <QRCodeSVG value={value} size={qrSize} />
             </div>
         </div>
     );
 };
-// --- (新規追加ここまで) ---
-
 
 // このコンポーネントは、患者リスト(patients)と戻るボタンの関数(onBack)を受け取ります
 const QrCodeListPage = ({ patients, onBack }) => {
-  // 選択された患者のIDを管理するためのstateを追加
+  // 選択された患者のIDを管理するためのstate
   const [selectedIds, setSelectedIds] = useState([]);
+  // ★ 追加: 検索キーワードを管理するstate
+  const [searchTerm, setSearchTerm] = useState('');
 
   // チェックボックスが変更されたときの処理
   const handleSelectionChange = (patientId) => {
@@ -54,22 +54,35 @@ const QrCodeListPage = ({ patients, onBack }) => {
     });
   };
 
+  // ★ 修正: 表示対象の患者リストを検索ワードでフィルタリング
+  const filteredPatients = patients.filter(patient => {
+    if (!searchTerm) return true; // 検索語がなければ全員表示
+    const term = searchTerm.toLowerCase();
+    return (
+        (patient.name && patient.name.toLowerCase().includes(term)) ||
+        (patient.patientId && patient.patientId.toLowerCase().includes(term)) ||
+        (patient.furigana && patient.furigana.toLowerCase().includes(term))
+    );
+  });
+
   // 全選択/全解除の処理
+  // ★ 修正: フィルタリングされている患者のみを対象にする
   const handleSelectAll = () => {
-    // patientIdが存在する全ての患者IDを取得してstateにセット
-    const allPatientIds = patients.filter(p => p.patientId).map(p => p.id);
-    setSelectedIds(allPatientIds);
+    const targetIds = filteredPatients.filter(p => p.patientId).map(p => p.id);
+    // 現在の選択状態に、表示中の全IDを追加（重複排除）
+    setSelectedIds(prev => [...new Set([...prev, ...targetIds])]);
   };
+
   const handleDeselectAll = () => {
-    setSelectedIds([]);
+    // ★ 修正: 表示中の患者のみ選択解除する（他の患者の選択は残す）
+    const targetIds = filteredPatients.map(p => p.id);
+    setSelectedIds(prev => prev.filter(id => !targetIds.includes(id)));
   };
 
   return (
-    // ▼ 修正点: 背景色をグレーに変更
     <div className="bg-gray-100 p-6 rounded-lg shadow-md">
       
-      {/* --- (新規追加) 印刷用スタイル --- */}
-      {/* App.js のスタイルを流用・適合 */}
+      {/* --- 印刷用スタイル --- */}
       <style>
           {`
           @media print {
@@ -98,7 +111,7 @@ const QrCodeListPage = ({ patients, onBack }) => {
               .print-grid {
                   grid-template-columns: repeat(2, minmax(0, 1fr));
               }
-              /* ▼ 修正点: QrCodeListPage.js固有の選択クラス */
+              /* 選択されていない場合に印刷時に非表示にするクラス */
               .not-selected-for-print {
                   display: none !important;
               }
@@ -107,18 +120,34 @@ const QrCodeListPage = ({ patients, onBack }) => {
       </style>
       
       {/* 印刷時には表示しないヘッダー部分 */}
-      {/* ▼ 修正点: ヘッダー部分にも背景色とシャドウを追加 */}
-      <div className="flex justify-between items-center mb-6 no-print bg-white p-4 rounded-lg shadow">
-        <h2 className="text-2xl font-bold">患者QRコード一覧</h2>
+      {/* ★ 修正: レイアウトを調整し、検索バーを追加 */}
+      <div className="flex flex-col md:flex-row justify-between items-center mb-6 no-print bg-white p-4 rounded-lg shadow gap-4">
+        <div className="w-full md:w-auto">
+            <h2 className="text-2xl font-bold mb-2">患者QRコード一覧</h2>
+            {/* ★ 追加: 検索入力フィールド */}
+            <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </span>
+                <input
+                    type="search"
+                    placeholder="名前、ID、ふりがなで検索..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 p-2 border border-gray-300 rounded-md w-full md:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                />
+            </div>
+        </div>
         
-        {/* ▼ ボタン部分は変更なし ▼ */}
         <div className="flex items-center space-x-2">
-          <button title="すべて選択" onClick={handleSelectAll} className="p-3 rounded-lg bg-green-600 hover:bg-green-700 text-white transition">
+          <button title="表示中をすべて選択" onClick={handleSelectAll} className="p-3 rounded-lg bg-green-600 hover:bg-green-700 text-white transition">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </button>
-          <button title="すべて解除" onClick={handleDeselectAll} className="p-3 rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white transition">
+          <button title="表示中をすべて解除" onClick={handleDeselectAll} className="p-3 rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white transition">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -134,36 +163,39 @@ const QrCodeListPage = ({ patients, onBack }) => {
             </svg>
           </button>
         </div>
-        {/* ▲ ここまで ▲ */}
       </div>
 
-      {/* ▼ 修正点: QRコードのリスト (App.js のレイアウトを適用) */}
+      {/* QRコードのリスト */}
       <div className="print-content bg-white p-4 rounded-lg shadow-inner grid grid-cols-1 md:print-grid md:grid-cols-2 gap-4">
-        {patients
-          .sort((a, b) => a.bed.localeCompare(b.bed, undefined, { numeric: true })) // ベッド番号でソート
-          .map(patient => (
-            // patientIdが存在する場合のみQRコードを生成
-            patient.patientId && (
-              // 選択されていない場合に印刷時に非表示にする (not-selected-for-print)
-              // 印刷時の改ページ禁止 (qr-card)
-              <div 
-                key={patient.id} 
-                className={`qr-card relative ${!selectedIds.includes(patient.id) ? 'not-selected-for-print' : ''} flex justify-center`}
-              >
-                {/* チェックボックスをカードの左上に配置 (no-print) */}
-                <input
-                  type="checkbox"
-                  checked={selectedIds.includes(patient.id)} //
-                  onChange={() => handleSelectionChange(patient.id)} //
-                  className="no-print absolute top-2 left-2 h-6 w-6 z-10" 
-                />
-                {/* 新しいカードコンポーネントを呼び出す */}
-                <PatientQrCodeCard patient={patient} />
-              </div>
-            )
-        ))}
+        {/* ★ 修正: filteredPatients を使用して描画 */}
+        {filteredPatients.length > 0 ? (
+            filteredPatients
+            .sort((a, b) => a.bed.localeCompare(b.bed, undefined, { numeric: true })) // ベッド番号でソート
+            .map(patient => (
+                // patientIdが存在する場合のみQRコードを生成
+                patient.patientId && (
+                // 選択されていない場合に印刷時に非表示にする (not-selected-for-print)
+                // 印刷時の改ページ禁止 (qr-card)
+                <div 
+                    key={patient.id} 
+                    className={`qr-card relative ${!selectedIds.includes(patient.id) ? 'not-selected-for-print' : ''} flex justify-center`}
+                >
+                    {/* チェックボックスをカードの左上に配置 (no-print) */}
+                    <input
+                    type="checkbox"
+                    checked={selectedIds.includes(patient.id)}
+                    onChange={() => handleSelectionChange(patient.id)}
+                    className="no-print absolute top-2 left-2 h-6 w-6 z-10 cursor-pointer" 
+                    />
+                    {/* カードコンポーネント */}
+                    <PatientQrCodeCard patient={patient} />
+                </div>
+                )
+            ))
+        ) : (
+            <p className="col-span-2 text-center text-gray-500 py-8">条件に一致する患者が見つかりません。</p>
+        )}
       </div>
-      {/* ▲ 修正点ここまで ▲ */}
     </div>
   );
 };
