@@ -1884,8 +1884,8 @@ const useBedData = (currentPage) => { // ★ 修正点: currentPage を引数で
         for (let i = 1; i <= totalBeds; i++) {
           const bedNumStr = i.toString();
           const bedDocRef = doc(statusCollectionRef, bedNumStr);
-          batch.set(bedDocRef, { status: "連絡済" }); // ★ 初期値: 連絡済
-          initialStatuses[bedNumStr] = "連絡済";
+          batch.set(bedDocRef, { status: "空床" }); // ★ 初期値: 空床
+          initialStatuses[bedNumStr] = "空床";
         }
         try {
           await batch.commit(); 
@@ -1911,21 +1911,26 @@ const useBedData = (currentPage) => { // ★ 修正点: currentPage を引数で
     return () => unsubscribe();
   }, [statusCollectionRef]); 
 
-  // 【3. クリック処理】
+// 【3. クリック処理】
 
-  // スタッフ用: 連絡済(Gray) -> 治療中(Blue), 治療中(Blue) <-> 送迎可能(Yellow)
+  // スタッフ用: 空床 -> 入室可能 -> 治療中 -> 送迎可能 (戻る: 送迎可能->治療中, 連絡済->空床)
   const handleBedTap = useCallback(async (bedNumber) => {
     const bedNumStr = bedNumber.toString();
     if (!bedStatuses) return;
-    const currentStatus = bedStatuses[bedNumStr] || '連絡済'; 
+    const currentStatus = bedStatuses[bedNumStr] || '空床'; 
     
     let newStatus = currentStatus;
-    if (currentStatus === '連絡済') {
-      newStatus = '治療中'; // Gray -> Blue (※UI側でDisabled想定)
+    // ★ フロー修正
+    if (currentStatus === '空床') {
+      newStatus = '入室可能'; // 準備完了
+    } else if (currentStatus === '入室可能') {
+      newStatus = '治療中';   // 患者入室
     } else if (currentStatus === '治療中') {
-      newStatus = '送迎可能'; // Blue -> Yellow
+      newStatus = '送迎可能'; // 透析終了
     } else if (currentStatus === '送迎可能') {
-      newStatus = '治療中'; // Yellow -> Blue (キャンセル)
+      newStatus = '治療中';   // キャンセル
+    } else if (currentStatus === '連絡済') {
+      newStatus = '空床';     // 清掃完了してリセット
     }
 
     if (newStatus !== currentStatus) {
@@ -1940,19 +1945,24 @@ const useBedData = (currentPage) => { // ★ 修正点: currentPage を引数で
     }
   }, [bedStatuses, statusCollectionRef]);
 
-  // 管理者用: 連絡済 -> 治療中 -> 送迎可能 -> 連絡済 (循環)
+  // 管理者用: 空床 -> 入室可能 -> 治療中 -> 送迎可能 -> 連絡済 -> 空床 (循環)
   const handleAdminBedTap = useCallback(async (bedNumber) => {
     const bedNumStr = bedNumber.toString();
     if (!bedStatuses) return;
-    const currentStatus = bedStatuses[bedNumStr] || '連絡済';
+    const currentStatus = bedStatuses[bedNumStr] || '空床';
     
     let newStatus = currentStatus;
-    if (currentStatus === '治療中') {
+    // ★ フロー修正
+    if (currentStatus === '空床') {
+        newStatus = '入室可能';
+    } else if (currentStatus === '入室可能') {
+        newStatus = '治療中';
+    } else if (currentStatus === '治療中') {
       newStatus = '送迎可能';
     } else if (currentStatus === '送迎可能') {
       newStatus = '連絡済';
     } else if (currentStatus === '連絡済') {
-      newStatus = '治療中';
+      newStatus = '空床';
     }
 
     if (newStatus !== currentStatus) {
@@ -1968,12 +1978,12 @@ const useBedData = (currentPage) => { // ★ 修正点: currentPage を引数で
 
   // 全ベッドリセット機能
   const handleResetAll = useCallback(async () => {
-    console.log("全ベッドを「連絡済」にリセットします...");
+    console.log("全ベッドを「空床」にリセットします...");
     
     const batch = writeBatch(db);
     for (let i = 1; i <= totalBeds; i++) {
       const bedDocRef = doc(statusCollectionRef, i.toString());
-      batch.update(bedDocRef, { status: "連絡済" });
+      batch.update(bedDocRef, { status: "空床" }); // ★ リセット先も空床
     }
     try {
       await batch.commit();
@@ -2150,13 +2160,18 @@ const useBedData = (currentPage) => { // ★ 修正点: currentPage を引数で
 // --- ベッドの状態に応じたスタイルを返すヘルパー関数 ---
 const getBedStatusStyle = (status) => {
     switch (status) {
-        case '送迎可能': // 黄色点滅
-            return 'bg-yellow-400 text-black animate-pulse';
-        case '連絡済': // グレー
-            return 'bg-gray-400 text-white';
-        case '治療中': // 青
-        default:
+        case '送迎可能': // 黄色（点滅なし）
+            return 'bg-yellow-400 text-black'; 
+        case '連絡済': // オレンジ
+            return 'bg-orange-500 text-white';
+        case '治療中': // 緑
+            return 'bg-green-500 text-white';
+        case '入室可能': // 青
             return 'bg-blue-500 text-white';
+        case '空床': // グレー
+        default:
+            // デフォルトまたは空床はグレー
+            return 'bg-gray-400 text-white';
     }
 };
 
@@ -2355,11 +2370,11 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
       {/* ベッドレイアウト表示エリア */}
       <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-hidden">
         {bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
-          const status = bedStatuses[bedNumber] || '連絡済'; // 初期値も連絡済に
+          const status = bedStatuses[bedNumber] || '空床'; // 【★修正★】 デフォルトフォールバックを「空床」に
           const statusStyle = getBedStatusStyle(status);
           
-          // 【★ご要望 3★】 「連絡済」(Gray) の場合のみ操作不可(disabled)にする
-          const isDisabled = status === '連絡済';
+           // ★ 修正: disabled判定を削除し、常に操作可能にしました。
+          // これにより、スタッフは「空床(Start)」も「連絡済(Reset)」も操作できます。
 
           return (
             <button
@@ -2368,7 +2383,6 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
               className={`p-3 rounded-lg font-bold shadow-md w-20 h-16 flex justify-center items-center transition-colors duration-300 ${statusStyle} ${isDisabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:brightness-110'}`}
               // 親から渡された handleBedTap を呼び出す
               onClick={() => handleBedTap(bedNumber)} 
-              disabled={isDisabled}
             >
               {bedNumber}
             </button>
