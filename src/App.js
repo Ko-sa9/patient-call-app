@@ -2380,7 +2380,7 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
             <button
               key={bedNumber}
               style={{ position: 'absolute', top, left }}
-              className={`p-3 rounded-lg font-bold shadow-md w-20 h-16 flex justify-center items-center transition-colors duration-300 ${statusStyle} ${isDisabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:brightness-110'}`}
+              className={`p-3 rounded-lg font-bold shadow-md w-20 h-16 flex justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-110`}
               // 親から渡された handleBedTap を呼び出す
               onClick={() => handleBedTap(bedNumber)} 
             >
