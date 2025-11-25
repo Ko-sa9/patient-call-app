@@ -1272,46 +1272,12 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
         onScanSuccessRef.current = onScanSuccess;
     }, [onScanSuccess]);
 
-    // --- カメラ切り替え機能 ---
-    const [cameras, setCameras] = useState([]); // 利用可能なカメラのリスト
-    const [selectedCameraId, setSelectedCameraId] = useState(''); // 選択中のカメラID
-    // --- 画面回転検知 ---
-    const [orientation, setOrientation] = useState(window.screen.orientation.type);
+    // --- カメラ設定 (ID指定ではなくモード指定に変更) ---
+    // 初期値は 'environment' (背面カメラ)
+    const [facingMode, setFacingMode] = useState('environment'); 
 
-    // デバイスのカメラを取得し、stateにセットする
+    // 選択されたモードでスキャンを開始する
     useEffect(() => {
-        Html5Qrcode.getCameras().then(devices => {
-            if (devices && devices.length) {
-                setCameras(devices);
-                // 選択中のカメラがなければ、背面カメラ('back')を優先的に選択する
-                if (!selectedCameraId) {
-                    const backCamera = devices.find(device => device.label.toLowerCase().includes('back')) || devices[0];
-                    setSelectedCameraId(backCamera.id);
-                }
-            }
-        }).catch(err => {
-            console.error("カメラの取得に失敗しました。", err);
-        });
-    }, [selectedCameraId]);
-    // --- ここまでカメラ切り替え機能 ---
-
-    // --- 画面回転イベントの監視 ---
-    useEffect(() => {
-        const handleOrientationChange = () => {
-            setOrientation(window.screen.orientation.type);
-        };
-        window.screen.orientation.addEventListener('change', handleOrientationChange);
-        return () => {
-            window.screen.orientation.removeEventListener('change', handleOrientationChange);
-        };
-    }, []);
-    // --- ここまで画面回転イベントの監視 ---
-
-
-    // 選択されたカメラでスキャンを開始する
-    useEffect(() => {
-        if (!selectedCameraId) return;
-
         const html5QrCode = new Html5Qrcode('qr-reader-container');
 
         // スキャン成功時のコールバック
@@ -1332,28 +1298,27 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
         // --- スキャナの設定 ---
         const config = {
             fps: 10,
-            qrbox: { width: 250, height: 250 }, // スキャン領域のサイズ
-            formatsToScan: [ // 読み取り対象のフォーマット
+            qrbox: { width: 250, height: 250 },
+            formatsToScan: [ 
                 Html5QrcodeSupportedFormats.QR_CODE,
                 Html5QrcodeSupportedFormats.CODE_128,
                 Html5QrcodeSupportedFormats.EAN_13,
-                Html5QrcodeSupportedFormats.CODABAR, // NW-7 (Codabar)
+                Html5QrcodeSupportedFormats.CODABAR,
             ]
         };
-        // --- ここまでスキャナ設定 ---
 
-        // スキャン開始
+        // ★ 修正点: IDではなく facingMode を指定して起動
         html5QrCode.start(
-            selectedCameraId,
+            { facingMode: facingMode }, 
             config,
             qrCodeSuccessCallback,
-            undefined // エラーコールバックは未使用
+            undefined
         ).catch(err => {
             console.error("スキャンの開始に失敗しました。", err);
             setScanResult({ success: false, message: "カメラの起動に失敗しました。" });
         });
 
-        // コンポーネントのアンマウント時にスキャナを停止するクリーンアップ処理
+        // クリーンアップ処理
         return () => {
             if (html5QrCode && html5QrCode.isScanning) {
                 html5QrCode.stop().catch(err => {
@@ -1361,14 +1326,11 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
                 });
             }
         };
-    }, [selectedCameraId, orientation]); // selectedCameraIdまたはorientationが変わったらスキャナを再起動
+    }, [facingMode]); // facingModeが変わったら再起動
 
-    // カメラを切り替える
+    // カメラを切り替える (背面 <-> 前面)
     const handleCameraSwitch = () => {
-        if (cameras.length < 2) return;
-        const currentIndex = cameras.findIndex(c => c.id === selectedCameraId);
-        const nextIndex = (currentIndex + 1) % cameras.length;
-        setSelectedCameraId(cameras[nextIndex].id);
+        setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
     };
 
     return (
@@ -1381,23 +1343,22 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
                 </button>
             }
         >
-            {/* ★ 修正点: style属性を削除し、シンプルなクラス指定のみに戻す */}
+            {/* スキャナが表示されるコンテナ */}
+            {/* CSS強制設定は削除済み */}
             <div id="qr-reader-container" className="w-full"></div>
 
-            {/* カメラが複数ある場合に切り替えボタンを表示 */}
-            {cameras.length > 1 && (
-                <div className="text-center mt-3">
-                    <button
-                        onClick={handleCameraSwitch}
-                        className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition inline-flex items-center"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" />
-                        </svg>
-                        カメラ切替
-                    </button>
-                </div>
-            )}
+            {/* カメラ切り替えボタン */}
+            <div className="text-center mt-3">
+                <button
+                    onClick={handleCameraSwitch}
+                    className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition inline-flex items-center"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" />
+                    </svg>
+                    カメラ切替 ({facingMode === 'environment' ? '背面' : '前面'})
+                </button>
+            </div>
 
             {/* スキャン結果のメッセージ表示 */}
             {scanResult && (
@@ -1434,6 +1395,7 @@ const DriverPage = () => {
         </div>
     );
 };
+
 
 // --- Global Controls & Layout ---
 // 画面上部に表示される、施設・日付・クールを選択するためのグローバルコントロール。
