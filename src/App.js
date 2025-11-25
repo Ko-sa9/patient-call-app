@@ -1381,12 +1381,8 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
                 </button>
             }
         >
-            {/* ★ 修正点: コンテナにスタイルを追加して正方形を強制し、はみ出しを隠す */}
-            <div 
-                id="qr-reader-container" 
-                className="w-full relative overflow-hidden bg-black rounded-lg" 
-                style={{ aspectRatio: '1/1', maxHeight: '60vh' }} 
-            ></div>
+            {/* ★ 修正点: style属性を削除し、シンプルなクラス指定のみに戻す */}
+            <div id="qr-reader-container" className="w-full"></div>
 
             {/* カメラが複数ある場合に切り替えボタンを表示 */}
             {cameras.length > 1 && (
