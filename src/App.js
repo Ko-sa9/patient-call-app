@@ -1333,7 +1333,6 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
         const config = {
             fps: 10,
             qrbox: { width: 250, height: 250 }, // スキャン領域のサイズ
-            aspectRatio: 1.0, // アスペクト比
             formatsToScan: [ // 読み取り対象のフォーマット
                 Html5QrcodeSupportedFormats.QR_CODE,
                 Html5QrcodeSupportedFormats.CODE_128,
@@ -1382,8 +1381,12 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
                 </button>
             }
         >
-            {/* スキャナが表示されるコンテナ */}
-            <div id="qr-reader-container" className="w-full relative"></div>
+            {/* ★ 修正点: コンテナにスタイルを追加して正方形を強制し、はみ出しを隠す */}
+            <div 
+                id="qr-reader-container" 
+                className="w-full relative overflow-hidden bg-black rounded-lg" 
+                style={{ aspectRatio: '1/1', maxHeight: '60vh' }} 
+            ></div>
 
             {/* カメラが複数ある場合に切り替えボタンを表示 */}
             {cameras.length > 1 && (

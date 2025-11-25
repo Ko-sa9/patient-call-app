@@ -36,3 +36,11 @@
     transform: rotate(360deg);
   }
 }
+
+/* QRスキャナーのカメラ映像を強制的に枠に合わせる設定 */
+#qr-reader-container video {
+    object-fit: cover !important; /* 縦横比を維持したまま枠全体を埋める */
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 0.5rem; /* 角丸を反映 */
+}
