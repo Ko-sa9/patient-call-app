@@ -1333,6 +1333,7 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
         const config = {
             fps: 10,
             qrbox: { width: 250, height: 250 }, // スキャン領域のサイズ
+            aspectRatio: 1.0, // アスペクト比
             formatsToScan: [ // 読み取り対象のフォーマット
                 Html5QrcodeSupportedFormats.QR_CODE,
                 Html5QrcodeSupportedFormats.CODE_128,
