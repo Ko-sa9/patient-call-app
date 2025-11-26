@@ -2126,9 +2126,11 @@ const getBedStatusStyle = (status) => {
         case '送迎可能': // 黄色（点滅なし）
             return 'bg-yellow-400 text-black'; 
         case '連絡済': // オレンジ
-            return 'bg-orange-500 text-white';
+            // 【2025-11-26 修正】 トーンを少し落とす (500 -> 400)
+            return 'bg-orange-400 text-white';
         case '治療中': // 緑
-            return 'bg-green-500 text-white';
+            // 【2025-11-26 修正】 トーンを少し落とす (500 -> 400)
+            return 'bg-green-400 text-white';
         case '入室可能': // 青
             return 'bg-blue-500 text-white';
         case '空床': // グレー
@@ -2253,7 +2255,7 @@ const InpatientAdminPage = ({
                 key={bedNumber}
                 style={{ position: 'absolute', top, left }}
                 // ★ 修正: flex-col を追加して縦並びにし、テキストサイズとパディング(p-1)を調整
-                className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-110`}
+                className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`}
                 onClick={() => handleAdminBedTap(bedNumber)} 
               >
                 {/* ベッド番号 (サイズ調整: text-xl) */}
@@ -2350,7 +2352,7 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
               key={bedNumber}
               style={{ position: 'absolute', top, left }}
               // ★ 修正: flex-col を追加して縦並びにし、テキストサイズとパディング(p-1)を調整
-              className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-110`}
+              className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`}
               // 親から渡された handleBedTap を呼び出す
               onClick={() => handleBedTap(bedNumber)} 
             >
