@@ -1768,7 +1768,8 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
             <p className="text-sm text-gray-600 mb-4">ベッド（青い箱）をドラッグして配置を調整し、「レイアウトを保存」ボタンを押してください。</p>
 
             {/* ドロップエリア (ref={drop}) */}
-            <div ref={drop} className="relative w-full h-[400px] bg-white border-2 border-dashed border-gray-400 rounded-lg overflow-hidden">
+            {/* 【2025-11-26 修正】 overflow-hidden -> overflow-auto (スクロール可能に変更) */}
+            <div ref={drop} className="relative w-full h-[400px] bg-white border-2 border-dashed border-gray-400 rounded-lg overflow-auto">
                 {bedPositions && Object.entries(bedPositions).map(([bedNumber, { top, left }]) => (
                     <BedButton
                         key={bedNumber}
@@ -2240,9 +2241,10 @@ const InpatientAdminPage = ({
         />
       ) : (
         /* モニターモード（false）の場合 */
-        <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-hidden">
+        /* 【2025-11-26 修正】 overflow-hidden -> overflow-auto (スクロール可能に変更) */
+        <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-auto">
           {bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
-            // 【★修正★】 デフォルトフォールバックを「連絡済」に
+            // 【2025-11-04 修正】 デフォルトフォールバックを「連絡済」に
             const status = bedStatuses[bedNumber] || '連絡済'; 
             const statusStyle = getBedStatusStyle(status);
             
@@ -2334,12 +2336,13 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
       </div>
 
       {/* ベッドレイアウト表示エリア */}
-      <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-hidden">
+      {/* 【2025-11-26 修正】 overflow-hidden -> overflow-auto (スクロール可能に変更) */}
+      <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-auto">
         {bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
-          const status = bedStatuses[bedNumber] || '空床'; // 【★修正★】 デフォルトフォールバックを「空床」に
+          const status = bedStatuses[bedNumber] || '空床'; // 【2025-11-04 修正】 デフォルトフォールバックを「空床」に
           const statusStyle = getBedStatusStyle(status);
           
-           // ★ 修正: disabled判定を削除し、常に操作可能にしました。
+           // 【2025-11-04 修正】 disabled判定を削除し、常に操作可能にしました。
           // これにより、スタッフは「空床(Start)」も「連絡済(Reset)」も操作できます。
 
           return (
