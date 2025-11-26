@@ -2129,8 +2129,8 @@ const getBedStatusStyle = (status) => {
             // 【2025-11-26 修正】 トーンを少し落とす (500 -> 400)
             return 'bg-orange-400 text-white';
         case '治療中': // 緑
-            // 【2025-11-26 修正】 トーンを少し落とす (500 -> 550)
-            return 'bg-green-550 text-white';
+            // 【2025-11-26 修正】 トーンを少し落とす (500 -> 600)
+            return 'bg-green-600 text-white';
         case '入室可能': // 青
             return 'bg-blue-500 text-white';
         case '空床': // グレー
