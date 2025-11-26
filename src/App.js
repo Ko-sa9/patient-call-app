@@ -2250,10 +2250,14 @@ const InpatientAdminPage = ({
               <button
                 key={bedNumber}
                 style={{ position: 'absolute', top, left }}
-                className={`p-3 rounded-lg font-bold shadow-md w-20 h-16 flex justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-110`}
+                // ★ 修正: flex-col を追加して縦並びにし、テキストサイズとパディング(p-1)を調整
+                className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-110`}
                 onClick={() => handleAdminBedTap(bedNumber)} 
               >
-                {bedNumber}
+                {/* ベッド番号 (サイズ調整: text-xl) */}
+                <span className="text-xl leading-none">{bedNumber}</span>
+                {/* ステータス文字 (小さく表示: text-[10px]) */}
+                <span className="text-[10px] leading-tight mt-1">{status}</span>
               </button>
             );
           })}
@@ -2342,11 +2346,15 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
             <button
               key={bedNumber}
               style={{ position: 'absolute', top, left }}
-              className={`p-3 rounded-lg font-bold shadow-md w-20 h-16 flex justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-110`}
+              // ★ 修正: flex-col を追加して縦並びにし、テキストサイズとパディング(p-1)を調整
+              className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-110`}
               // 親から渡された handleBedTap を呼び出す
               onClick={() => handleBedTap(bedNumber)} 
             >
-              {bedNumber}
+              {/* ベッド番号 (サイズ調整: text-xl) */}
+              <span className="text-xl leading-none">{bedNumber}</span>
+              {/* ステータス文字 (小さく表示: text-[10px]) */}
+              <span className="text-[10px] leading-tight mt-1">{status}</span>
             </button>
             );
         })}
