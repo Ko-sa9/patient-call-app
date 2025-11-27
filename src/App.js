@@ -2284,8 +2284,7 @@ const InpatientAdminPage = ({
 };
 
 // --- QR/バーコードスキャナー部品 (コンパクト・ダッシュボード型) ---
-// 【2025-11-27 修正】 常時表示用にコンパクト化（左：カメラ、右：ステータス）
-// ※ InpatientStaffPage の直前に追加してください
+// 【2025-11-27 修正】 常時表示用にコンパクト化＆自動フォールバック実装
 const CompactQrScanner = ({ onScanSuccess }) => {
     const [scanResult, setScanResult] = useState(null); // スキャン結果
     const isProcessingRef = useRef(false); 
@@ -2296,11 +2295,15 @@ const CompactQrScanner = ({ onScanSuccess }) => {
     }, [onScanSuccess]);
 
     const [facingMode, setFacingMode] = useState('environment'); 
+    const [mountKey, setMountKey] = useState(0); // リトライ用キー
 
     useEffect(() => {
-        // DOM要素の高さに合わせてアスペクト比を調整するためのタイマー
-        const timer = setTimeout(() => {
-            const html5QrCode = new Html5Qrcode('qr-reader-compact');
+        let html5QrCode;
+        let isMounted = true;
+
+        // DOM要素の準備を待ってから開始
+        const timer = setTimeout(async () => {
+            html5QrCode = new Html5Qrcode('qr-reader-compact');
 
             const qrCodeSuccessCallback = (decodedText, decodedResult) => {
                 if (isProcessingRef.current) return;
@@ -2309,19 +2312,16 @@ const CompactQrScanner = ({ onScanSuccess }) => {
                 const result = onScanSuccessRef.current(decodedText);
                 setScanResult(result);
 
-                // 連続読み取り防止 & 結果表示の維持時間
                 setTimeout(() => {
                     isProcessingRef.current = false;
-                    // 成功時は少し長く表示を残す、エラーはすぐ消すなど調整可能
-                    // ここでは1秒後にステータスをリセット（待機中に戻す）
                     setTimeout(() => setScanResult(null), 1000); 
                 }, 2000);
             };
 
             const config = {
                 fps: 10,
-                qrbox: { width: 150, height: 100 }, // 読み取り枠を小さく設定
-                aspectRatio: 1.0, // 正方形に近い比率で取得し、CSSでトリミング
+                qrbox: { width: 150, height: 100 }, 
+                aspectRatio: 1.0, 
                 formatsToScan: [ 
                     Html5QrcodeSupportedFormats.QR_CODE,
                     Html5QrcodeSupportedFormats.CODE_128,
@@ -2330,37 +2330,44 @@ const CompactQrScanner = ({ onScanSuccess }) => {
                 ]
             };
 
-            html5QrCode.start(
-                { facingMode: facingMode }, 
-                config,
-                qrCodeSuccessCallback,
-                undefined
-            ).catch(err => {
-                console.error("スキャン開始エラー:", err);
-                setScanResult({ success: false, message: "カメラ起動失敗" });
-            });
-
-            return () => {
-                if (html5QrCode && html5QrCode.isScanning) {
-                    html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error);
+            try {
+                // カメラ起動を試みる
+                await html5QrCode.start(
+                    { facingMode: facingMode }, 
+                    config,
+                    qrCodeSuccessCallback,
+                    undefined
+                );
+            } catch (err) {
+                console.warn(`Camera start failed with mode: ${facingMode}`, err);
+                // 背面カメラで失敗した場合は、前面カメラに切り替えて自動再試行
+                if (isMounted && facingMode === 'environment') {
+                    console.log("Switching to user camera automatically...");
+                    setFacingMode('user'); 
+                    // state更新で再レンダリングされ、useEffectが再度走る
+                } else if (isMounted) {
+                    setScanResult({ success: false, message: "カメラ起動失敗" });
                 }
-            };
+            }
         }, 100);
 
-        return () => clearTimeout(timer);
-    }, [facingMode]);
+        return () => {
+            isMounted = false;
+            clearTimeout(timer);
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error);
+            }
+        };
+    }, [facingMode, mountKey]);
 
     return (
-        // 全体のコンテナ：高さを固定（h-32 = 128px）してコンパクトに
         <div className="flex w-full h-32 bg-white border border-gray-300 rounded-lg shadow-sm overflow-hidden mb-4">
             
-            {/* 左側：カメラ映像エリア (幅固定 w-40) */}
+            {/* 左側：カメラ映像エリア */}
             <div className="relative w-40 bg-black flex-shrink-0">
                 <div id="qr-reader-compact" className="w-full h-full opacity-90" style={{ objectFit: 'cover' }}></div>
-                {/* 動作中インジケーター（点滅する小さな緑の点） */}
                 <div className="absolute top-2 left-2 w-3 h-3 bg-green-500 rounded-full animate-pulse border border-white z-10" title="カメラ動作中"></div>
                 
-                {/* カメラ切替ボタン（映像の上に小さく配置） */}
                 <button
                     onClick={() => setFacingMode(prev => prev === 'environment' ? 'user' : 'environment')}
                     className="absolute bottom-1 right-1 bg-gray-800 bg-opacity-70 text-white text-[10px] px-2 py-1 rounded border border-gray-600 z-10"
@@ -2369,24 +2376,24 @@ const CompactQrScanner = ({ onScanSuccess }) => {
                 </button>
             </div>
 
-            {/* 右側：ステータス表示エリア (残りの幅) */}
+            {/* 右側：ステータス表示エリア */}
             <div className={`flex-1 flex flex-col justify-center items-center p-2 text-center transition-colors duration-300 ${
                 scanResult 
                     ? (scanResult.success ? 'bg-green-100' : 'bg-red-100') 
                     : 'bg-gray-50'
             }`}>
                 {scanResult ? (
-                    // 結果表示中
                     <>
+                        {/* 文字サイズを統一 (text-2xl) */}
                         <div className={`text-2xl font-bold mb-1 ${scanResult.success ? 'text-green-700' : 'text-red-700'}`}>
                             {scanResult.success ? 'OK!' : 'NG'}
                         </div>
-                        <p className={`text-sm font-semibold leading-tight ${scanResult.success ? 'text-green-800' : 'text-red-800'}`}>
+                        {/* 下の文字も text-2xl に変更 */}
+                        <p className={`text-2xl font-bold leading-tight ${scanResult.success ? 'text-green-800' : 'text-red-800'}`}>
                             {scanResult.message}
                         </p>
                     </>
                 ) : (
-                    // 待機中
                     <>
                         <p className="text-gray-400 font-bold text-lg mb-1">SCANNING...</p>
                         <p className="text-xs text-gray-500">コードをかざしてください</p>
@@ -2400,8 +2407,6 @@ const CompactQrScanner = ({ onScanSuccess }) => {
 // --- 2. スタッフ画面 (InpatientStaffPage) ---
 // 【2025-11-27 修正】 常時表示のCompactQrScannerを使用
 const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
-  // showScannerのstateは削除（常時表示のため）
-
   // QRスキャン操作
   const handleScanSuccess = useCallback((decodedText) => {
     const bedNumber = parseInt(decodedText, 10);
@@ -2410,14 +2415,14 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
       
       if (bedStatuses && bedStatuses[bedNumStr] === '治療中') {
         handleBedTap(bedNumStr); 
-        return { success: true, message: `No.${bedNumStr} 送迎可能` }; // メッセージを短く
+        return { success: true, message: `No.${bedNumStr} 送迎可能` }; 
       } else if (bedStatuses && bedStatuses[bedNumStr] !== '治療中') {
-        return { success: false, message: `No.${bedNumStr} 対象外ステータス` };
+        return { success: false, message: `No.${bedNumStr} 対象外` }; // メッセージを短く
       } else {
-        return { success: false, message: "状態取得エラー" };
+        return { success: false, message: "取得エラー" };
       }
     } else {
-      return { success: false, message: `無効コード: ${decodedText}` };
+      return { success: false, message: `無効コード` };
     }
   }, [bedStatuses, handleBedTap]);
 
@@ -2426,13 +2431,12 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
       {/* ヘッダーエリア */}
       <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow mb-4 sticky top-0 z-20">
         <h2 className="text-2xl font-bold text-gray-800">スタッフ操作</h2>
-        {/* ボタン類は削除（カメラは常時表示なので不要） */}
         <div className="text-sm text-gray-500 font-medium">
              リスト・カメラ同期中
         </div>
       </div>
 
-      {/* 常時表示QRスキャナー (コンテナクラス等はコンポーネント側に内包) */}
+      {/* 常時表示QRスキャナー */}
       <CompactQrScanner onScanSuccess={handleScanSuccess} />
 
       {/* ベッドレイアウト表示エリア */}
