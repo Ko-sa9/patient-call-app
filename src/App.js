@@ -2283,82 +2283,173 @@ const InpatientAdminPage = ({
   );
 };
 
-// --- 2. スタッフ画面 (InpatientStaffPage) ---
-// 【★修正★】 運用フロー変更に伴い、disabledロジックを変更
-const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
-  // データとクリック関数を親(InpatientView)から props で受け取る
-  const [isScannerOpen, setScannerOpen] = useState(false); // QRスキャナモーダル
+// --- QR/バーコードスキャナー部品 (コンパクト・ダッシュボード型) ---
+// 【2025-11-27 修正】 常時表示用にコンパクト化（左：カメラ、右：ステータス）
+// ※ InpatientStaffPage の直前に追加してください
+const CompactQrScanner = ({ onScanSuccess }) => {
+    const [scanResult, setScanResult] = useState(null); // スキャン結果
+    const isProcessingRef = useRef(false); 
 
-  // QRスキャン操作（治療中 -> 送迎可能 の一方通行）
+    const onScanSuccessRef = useRef(onScanSuccess);
+    useEffect(() => {
+        onScanSuccessRef.current = onScanSuccess;
+    }, [onScanSuccess]);
+
+    const [facingMode, setFacingMode] = useState('environment'); 
+
+    useEffect(() => {
+        // DOM要素の高さに合わせてアスペクト比を調整するためのタイマー
+        const timer = setTimeout(() => {
+            const html5QrCode = new Html5Qrcode('qr-reader-compact');
+
+            const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+                if (isProcessingRef.current) return;
+                isProcessingRef.current = true;
+
+                const result = onScanSuccessRef.current(decodedText);
+                setScanResult(result);
+
+                // 連続読み取り防止 & 結果表示の維持時間
+                setTimeout(() => {
+                    isProcessingRef.current = false;
+                    // 成功時は少し長く表示を残す、エラーはすぐ消すなど調整可能
+                    // ここでは1秒後にステータスをリセット（待機中に戻す）
+                    setTimeout(() => setScanResult(null), 1000); 
+                }, 2000);
+            };
+
+            const config = {
+                fps: 10,
+                qrbox: { width: 150, height: 100 }, // 読み取り枠を小さく設定
+                aspectRatio: 1.0, // 正方形に近い比率で取得し、CSSでトリミング
+                formatsToScan: [ 
+                    Html5QrcodeSupportedFormats.QR_CODE,
+                    Html5QrcodeSupportedFormats.CODE_128,
+                    Html5QrcodeSupportedFormats.EAN_13,
+                    Html5QrcodeSupportedFormats.CODABAR,
+                ]
+            };
+
+            html5QrCode.start(
+                { facingMode: facingMode }, 
+                config,
+                qrCodeSuccessCallback,
+                undefined
+            ).catch(err => {
+                console.error("スキャン開始エラー:", err);
+                setScanResult({ success: false, message: "カメラ起動失敗" });
+            });
+
+            return () => {
+                if (html5QrCode && html5QrCode.isScanning) {
+                    html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error);
+                }
+            };
+        }, 100);
+
+        return () => clearTimeout(timer);
+    }, [facingMode]);
+
+    return (
+        // 全体のコンテナ：高さを固定（h-32 = 128px）してコンパクトに
+        <div className="flex w-full h-32 bg-white border border-gray-300 rounded-lg shadow-sm overflow-hidden mb-4">
+            
+            {/* 左側：カメラ映像エリア (幅固定 w-40) */}
+            <div className="relative w-40 bg-black flex-shrink-0">
+                <div id="qr-reader-compact" className="w-full h-full opacity-90" style={{ objectFit: 'cover' }}></div>
+                {/* 動作中インジケーター（点滅する小さな緑の点） */}
+                <div className="absolute top-2 left-2 w-3 h-3 bg-green-500 rounded-full animate-pulse border border-white z-10" title="カメラ動作中"></div>
+                
+                {/* カメラ切替ボタン（映像の上に小さく配置） */}
+                <button
+                    onClick={() => setFacingMode(prev => prev === 'environment' ? 'user' : 'environment')}
+                    className="absolute bottom-1 right-1 bg-gray-800 bg-opacity-70 text-white text-[10px] px-2 py-1 rounded border border-gray-600 z-10"
+                >
+                    切替
+                </button>
+            </div>
+
+            {/* 右側：ステータス表示エリア (残りの幅) */}
+            <div className={`flex-1 flex flex-col justify-center items-center p-2 text-center transition-colors duration-300 ${
+                scanResult 
+                    ? (scanResult.success ? 'bg-green-100' : 'bg-red-100') 
+                    : 'bg-gray-50'
+            }`}>
+                {scanResult ? (
+                    // 結果表示中
+                    <>
+                        <div className={`text-2xl font-bold mb-1 ${scanResult.success ? 'text-green-700' : 'text-red-700'}`}>
+                            {scanResult.success ? 'OK!' : 'NG'}
+                        </div>
+                        <p className={`text-sm font-semibold leading-tight ${scanResult.success ? 'text-green-800' : 'text-red-800'}`}>
+                            {scanResult.message}
+                        </p>
+                    </>
+                ) : (
+                    // 待機中
+                    <>
+                        <p className="text-gray-400 font-bold text-lg mb-1">SCANNING...</p>
+                        <p className="text-xs text-gray-500">コードをかざしてください</p>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// --- 2. スタッフ画面 (InpatientStaffPage) ---
+// 【2025-11-27 修正】 常時表示のCompactQrScannerを使用
+const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
+  // showScannerのstateは削除（常時表示のため）
+
+  // QRスキャン操作
   const handleScanSuccess = useCallback((decodedText) => {
     const bedNumber = parseInt(decodedText, 10);
     if (bedNumber >= 1 && bedNumber <= totalBeds) {
       const bedNumStr = bedNumber.toString();
       
       if (bedStatuses && bedStatuses[bedNumStr] === '治療中') {
-        // 親から渡された handleBedTap を呼び出す
-        // (handleBedTapは 治療中 -> 送迎可能 に変更する)
         handleBedTap(bedNumStr); 
-        return { success: true, message: `${bedNumStr}番ベッドを「送迎可能」にしました。` };
+        return { success: true, message: `No.${bedNumStr} 送迎可能` }; // メッセージを短く
       } else if (bedStatuses && bedStatuses[bedNumStr] !== '治療中') {
-        // 「連絡済」や「送迎可能」をスキャンした場合
-        return { success: false, message: `${bedNumStr}番ベッドは「治療中」ではありません。` };
+        return { success: false, message: `No.${bedNumStr} 対象外ステータス` };
       } else {
-        return { success: false, message: "ベッドの状態を取得できません。" };
+        return { success: false, message: "状態取得エラー" };
       }
     } else {
-      return { success: false, message: `無効なコードです: ${decodedText}` };
+      return { success: false, message: `無効コード: ${decodedText}` };
     }
-  }, [bedStatuses, handleBedTap]); // 依存配列に props の handleBedTap を指定
+  }, [bedStatuses, handleBedTap]);
 
-  // --- レンダリング ---
   return (
     <div>
-      {/* 【タスク7】 QRスキャナーモーダル */}
-      {isScannerOpen && (
-        <QrScannerModal
-          onClose={() => setScannerOpen(false)}
-          onScanSuccess={handleScanSuccess}
-        />
-      )}
-      
-      {/* ヘッダーとQRスキャンボタン */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow mb-6">
-        <h2 className="text-2xl font-bold">スタッフ操作画面</h2>
-        <button
-          onClick={() => setScannerOpen(true)}
-          title="QRコードで呼び出し"
-          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold p-3 rounded-lg transition"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </button>
+      {/* ヘッダーエリア */}
+      <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow mb-4 sticky top-0 z-20">
+        <h2 className="text-2xl font-bold text-gray-800">スタッフ操作</h2>
+        {/* ボタン類は削除（カメラは常時表示なので不要） */}
+        <div className="text-sm text-gray-500 font-medium">
+             リスト・カメラ同期中
+        </div>
       </div>
 
+      {/* 常時表示QRスキャナー (コンテナクラス等はコンポーネント側に内包) */}
+      <CompactQrScanner onScanSuccess={handleScanSuccess} />
+
       {/* ベッドレイアウト表示エリア */}
-      {/* 【2025-11-26 修正】 overflow-hidden -> overflow-auto (スクロール可能に変更) */}
+      {/* 【2025-11-26 修正】 overflow-auto */}
       <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-auto">
         {bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
-          const status = bedStatuses[bedNumber] || '空床'; // 【2025-11-04 修正】 デフォルトフォールバックを「空床」に
+          const status = bedStatuses[bedNumber] || '空床';
           const statusStyle = getBedStatusStyle(status);
           
-           // 【2025-11-04 修正】 disabled判定を削除し、常に操作可能にしました。
-          // これにより、スタッフは「空床(Start)」も「連絡済(Reset)」も操作できます。
-
           return (
             <button
               key={bedNumber}
               style={{ position: 'absolute', top, left }}
-              // ★ 修正: flex-col を追加して縦並びにし、テキストサイズとパディング(p-1)を調整
               className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`}
-              // 親から渡された handleBedTap を呼び出す
               onClick={() => handleBedTap(bedNumber)} 
             >
-              {/* ベッド番号 (サイズ調整: text-xl) */}
               <span className="text-xl leading-none">{bedNumber}</span>
-              {/* ステータス文字 (小さく表示: text-[10px]) */}
               <span className="text-[10px] leading-tight mt-1">{status}</span>
             </button>
             );
