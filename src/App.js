@@ -47,9 +47,22 @@ const getDayQueryString = (dateString) => {
     return null; // 日曜など
 };
 
-// 【2025-11-27 追加】 モバイルデバイス判定（スマホ・タブレットかどうか）
+// 【2025-11-27 修正】 モバイルデバイス判定（スマホ・タブレットかどうか）
+// iPad OS 13+ は UA が "Macintosh" になるため、タッチポイント数もチェックして確実に判定
 const isMobileDevice = () => {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const ua = navigator.userAgent;
+    
+    // 1. 一般的なモバイル端末の UserAgent 判定
+    if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
+        return true;
+    }
+
+    // 2. iPad OS 13+ (Macintosh と判定されるが、タッチ操作が可能)
+    if (ua.includes("Mac") && navigator.maxTouchPoints > 1) {
+        return true;
+    }
+
+    return false;
 };
 
 // ローディング中に表示するスピナーコンポーネント。
