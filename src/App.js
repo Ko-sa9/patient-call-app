@@ -2284,45 +2284,87 @@ const InpatientAdminPage = ({
 };
 
 // --- QR/バーコードスキャナー部品 (コンパクト・ダッシュボード型) ---
-// 【2025-11-27 修正】 常時表示用にコンパクト化＆自動フォールバック実装
+// 【2025-11-27 修正】 常時表示用。起動タイミング調整と詳細コメントを追加。
 const CompactQrScanner = ({ onScanSuccess }) => {
-    const [scanResult, setScanResult] = useState(null); // スキャン結果
-    const isProcessingRef = useRef(false); 
+    // スキャン結果（成功/失敗メッセージ）を管理する状態変数
+    const [scanResult, setScanResult] = useState(null);
+    
+    // 連続読み取りを防ぐためのフラグ（処理中は true になる）
+    const isProcessingRef = useRef(false);
 
+    // 成功時のコールバック関数をRefに保持（useEffect内での依存関係解決のため）
     const onScanSuccessRef = useRef(onScanSuccess);
     useEffect(() => {
         onScanSuccessRef.current = onScanSuccess;
     }, [onScanSuccess]);
 
-    const [facingMode, setFacingMode] = useState('environment'); 
-    const [mountKey, setMountKey] = useState(0); // リトライ用キー
+    // カメラの向きを管理（'environment': 背面, 'user': 前面）
+    const [facingMode, setFacingMode] = useState('environment');
+    
+    // スキャナーのインスタンスを保持するRef（画面再描画でも維持するため）
+    const scannerRef = useRef(null);
+    
+    // コンポーネントが画面に表示されているかどうかのフラグ（非同期処理の安全対策）
+    const isMountedRef = useRef(true);
 
+    // カメラの起動・停止を管理する useEffect
+    // facingMode（カメラの向き）が変わるたびに再実行される
     useEffect(() => {
-        let html5QrCode;
-        let isMounted = true;
+        isMountedRef.current = true; // マウント（表示）されたことを記録
 
-        // DOM要素の準備を待ってから開始
-        const timer = setTimeout(async () => {
-            html5QrCode = new Html5Qrcode('qr-reader-compact');
+        // スキャナーの初期化と起動を行う非同期関数
+        const initScanner = async () => {
+            // 【対策】ページ遷移直後のDOM描画待ち
+            // 画面の描画が完了するのを少し待ってからカメラを準備する
+            await new Promise(resolve => setTimeout(resolve, 500)); // 0.5秒待機
 
+            // 待っている間に画面が閉じられていたら何もしない
+            if (!isMountedRef.current) return;
+
+            // 既に動いているスキャナーがあれば停止・消去する（重複起動防止）
+            if (scannerRef.current) {
+                try {
+                    // 実行中のスキャンを停止
+                    await scannerRef.current.stop();
+                    // 画面上の描画をクリア
+                    scannerRef.current.clear();
+                } catch (e) {
+                    console.warn("既存スキャナーの停止中に警告:", e);
+                }
+            }
+
+            // ライブラリのインスタンスを作成（ID: qr-reader-compact の要素に関連付け）
+            const html5QrCode = new Html5Qrcode("qr-reader-compact");
+            scannerRef.current = html5QrCode;
+
+            // 読み取り成功時に実行されるコールバック関数
             const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+                // 処理中なら何もしない（連打防止）
                 if (isProcessingRef.current) return;
-                isProcessingRef.current = true;
+                isProcessingRef.current = true; // 処理中フラグを立てる
 
+                // 親コンポーネントから渡された成功処理を実行
                 const result = onScanSuccessRef.current(decodedText);
+                
+                // 画面に結果を表示（OK/NGなど）
                 setScanResult(result);
 
+                // 一定時間後にフラグを解除して、次の読み取りを許可する
                 setTimeout(() => {
                     isProcessingRef.current = false;
-                    setTimeout(() => setScanResult(null), 1000); 
-                }, 2000);
+                    // さらに1秒後に結果表示を消して「待機中」に戻す
+                    setTimeout(() => {
+                        if (isMountedRef.current) setScanResult(null);
+                    }, 1000);
+                }, 2000); // 2秒間は次の読み取りをしない
             };
 
+            // カメラの設定（FPS: 1秒間のスキャン回数, qrbox: 読み取り範囲）
             const config = {
                 fps: 10,
-                qrbox: { width: 150, height: 100 }, 
-                aspectRatio: 1.0, 
-                formatsToScan: [ 
+                qrbox: { width: 150, height: 100 },
+                aspectRatio: 1.0,
+                formatsToScan: [
                     Html5QrcodeSupportedFormats.QR_CODE,
                     Html5QrcodeSupportedFormats.CODE_128,
                     Html5QrcodeSupportedFormats.EAN_13,
@@ -2330,44 +2372,57 @@ const CompactQrScanner = ({ onScanSuccess }) => {
                 ]
             };
 
+            // カメラの起動を試みる
             try {
-                // カメラ起動を試みる
                 await html5QrCode.start(
-                    { facingMode: facingMode }, 
+                    { facingMode: facingMode }, // 指定したカメラ（背面/前面）を使用
                     config,
                     qrCodeSuccessCallback,
-                    undefined
+                    undefined // 読み取り失敗時のコールバック（今回は省略）
                 );
+                console.log("カメラ起動成功:", facingMode);
             } catch (err) {
-                console.warn(`Camera start failed with mode: ${facingMode}`, err);
-                // 背面カメラで失敗した場合は、前面カメラに切り替えて自動再試行
-                if (isMounted && facingMode === 'environment') {
-                    console.log("Switching to user camera automatically...");
-                    setFacingMode('user'); 
-                    // state更新で再レンダリングされ、useEffectが再度走る
-                } else if (isMounted) {
-                    setScanResult({ success: false, message: "カメラ起動失敗" });
+                console.error(`カメラ起動失敗 (${facingMode}):`, err);
+                
+                // 背面カメラ(environment)で失敗した場合、前面カメラ(user)での再試行を試みる
+                // （PCなど背面カメラがないデバイス対策）
+                if (isMountedRef.current && facingMode === 'environment') {
+                    console.log("背面カメラが使えないため、前面カメラに切り替えます...");
+                    setFacingMode('user'); // これにより useEffect が再実行される
+                } else if (isMountedRef.current) {
+                    // 前面カメラでもダメだった場合、エラーを表示
+                    setScanResult({ success: false, message: "カメラ起動不可" });
                 }
             }
-        }, 100);
+        };
 
+        // 初期化関数を実行
+        initScanner();
+
+        // クリーンアップ関数（画面が閉じられる時や再実行前に呼ばれる）
         return () => {
-            isMounted = false;
-            clearTimeout(timer);
-            if (html5QrCode && html5QrCode.isScanning) {
-                html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error);
+            isMountedRef.current = false; // アンマウント（非表示）状態にする
+            if (scannerRef.current) {
+                // スキャナーが動いていれば停止を試みる
+                scannerRef.current.stop().catch(err => console.warn("停止処理中の警告:", err));
+                scannerRef.current.clear();
             }
         };
-    }, [facingMode, mountKey]);
+    }, [facingMode]); // facingModeが変わるたびにこの処理を再実行する
 
     return (
+        // 外枠のコンテナ（高さ固定、影付き）
         <div className="flex w-full h-32 bg-white border border-gray-300 rounded-lg shadow-sm overflow-hidden mb-4">
             
-            {/* 左側：カメラ映像エリア */}
+            {/* 左側：カメラ映像エリア（幅固定） */}
             <div className="relative w-40 bg-black flex-shrink-0">
+                {/* ライブラリがここに映像を描画する */}
                 <div id="qr-reader-compact" className="w-full h-full opacity-90" style={{ objectFit: 'cover' }}></div>
+                
+                {/* 動作中を示す緑のランプ（アニメーション） */}
                 <div className="absolute top-2 left-2 w-3 h-3 bg-green-500 rounded-full animate-pulse border border-white z-10" title="カメラ動作中"></div>
                 
+                {/* カメラ切替ボタン */}
                 <button
                     onClick={() => setFacingMode(prev => prev === 'environment' ? 'user' : 'environment')}
                     className="absolute bottom-1 right-1 bg-gray-800 bg-opacity-70 text-white text-[10px] px-2 py-1 rounded border border-gray-600 z-10"
@@ -2379,21 +2434,23 @@ const CompactQrScanner = ({ onScanSuccess }) => {
             {/* 右側：ステータス表示エリア */}
             <div className={`flex-1 flex flex-col justify-center items-center p-2 text-center transition-colors duration-300 ${
                 scanResult 
-                    ? (scanResult.success ? 'bg-green-100' : 'bg-red-100') 
-                    : 'bg-gray-50'
+                    ? (scanResult.success ? 'bg-green-100' : 'bg-red-100') // 結果があれば緑/赤背景
+                    : 'bg-gray-50' // 待機中はグレー背景
             }`}>
                 {scanResult ? (
+                    // 結果表示中
                     <>
-                        {/* 文字サイズを統一 (text-2xl) */}
+                        {/* OK/NG の文字サイズ (text-2xl) */}
                         <div className={`text-2xl font-bold mb-1 ${scanResult.success ? 'text-green-700' : 'text-red-700'}`}>
                             {scanResult.success ? 'OK!' : 'NG'}
                         </div>
-                        {/* 下の文字も text-2xl に変更 */}
+                        {/* 結果メッセージ（文字サイズを text-2xl に統一して見やすく） */}
                         <p className={`text-2xl font-bold leading-tight ${scanResult.success ? 'text-green-800' : 'text-red-800'}`}>
                             {scanResult.message}
                         </p>
                     </>
                 ) : (
+                    // 待機中
                     <>
                         <p className="text-gray-400 font-bold text-lg mb-1">SCANNING...</p>
                         <p className="text-xs text-gray-500">コードをかざしてください</p>
