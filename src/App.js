@@ -47,6 +47,11 @@ const getDayQueryString = (dateString) => {
     return null; // 日曜など
 };
 
+// 【2025-11-27 追加】 モバイルデバイス判定（スマホ・タブレットかどうか）
+const isMobileDevice = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
 // ローディング中に表示するスピナーコンポーネント。
 const LoadingSpinner = ({ text = "読み込み中..." }) => (
     <div className="flex flex-col justify-center items-center h-full my-8">
@@ -1463,7 +1468,8 @@ const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) =
 // --- Role-based Views ---
 // スタッフ用のビュー。管理、スタッフ、モニターの各ページを切り替えて表示する。
 const StaffView = ({ user, onGoBack }) => {
-    const [currentPage, setCurrentPage] = useState('admin'); // 'admin', 'staff', 'monitor'
+    // 【2025-11-27 修正】 スマホ・タブレットなら初期画面を'staff'、PCなら'admin'にする
+    const [currentPage, setCurrentPage] = useState(isMobileDevice() ? 'staff' : 'admin');
     // ページによってクールセレクターの表示/非表示を切り替える
     const hideCoolSelector = currentPage === 'monitor' || currentPage === 'staff';
     // ページ切り替えボタン
@@ -2524,7 +2530,8 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
 // 【★修正★】 isSpeaking をフックから受け取り AdminPage に渡す
 // 【★ 2025-11-05 修正 ★】 QRコードページ表示ロジックを追加
 const InpatientView = ({ user, onGoBack }) => {
-    const [currentPage, setCurrentPage] = useState('admin'); // 'admin' or 'staff'
+    // 【2025-11-27 修正】 スマホ・タブレットなら初期画面を'staff'、PCなら'admin'にする
+    const [currentPage, setCurrentPage] = useState(isMobileDevice() ? 'staff' : 'admin');
     const [showQrPage, setShowQrPage] = useState(false); // ★ 修正点: QRページ表示用のstate
     const hideCoolSelector = true;
 
