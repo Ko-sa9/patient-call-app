@@ -2302,8 +2302,9 @@ const InpatientAdminPage = ({
   );
 };
 
-// --- QR/バーコードスキャナー部品 (コンパクト・ダッシュボード型) ---
+// QR/バーコードスキャナー部品 (コンパクト・ダッシュボード型)
 // 【2025-11-27 修正】 常時表示用にコンパクト化（左：カメラ、右：ステータス）
+// 【2025-11-27 追加修正】 読み取り精度向上のため、qrboxを正方形にし、アスペクト比設定を削除
 const CompactQrScanner = ({ onScanSuccess }) => {
     // スキャン結果（成功時のメッセージやエラー）を管理するstate
     const [scanResult, setScanResult] = useState(null); 
@@ -2349,8 +2350,11 @@ const CompactQrScanner = ({ onScanSuccess }) => {
             // スキャナーの設定
             const config = {
                 fps: 10, // 1秒間に何回スキャンするか
-                qrbox: { width: 150, height: 100 }, // 読み取り範囲（緑の枠）のサイズ
-                aspectRatio: 1.0, // カメラ映像のアスペクト比（正方形に近い比率で取得）
+                // ★ 修正: QRコード（正方形）に合わせて、読み取り範囲も正方形に変更
+                // コンテナ高さ(128px)に収まるサイズに設定 (110x110)
+                qrbox: { width: 110, height: 110 }, 
+                // ★ 修正: aspectRatio: 1.0 を削除し、カメラの自然な比率を使用させる
+                // aspectRatio: 1.0, 
                 formatsToScan: [ 
                     Html5QrcodeSupportedFormats.QR_CODE, // QRコード
                     Html5QrcodeSupportedFormats.CODE_128, // バーコード
