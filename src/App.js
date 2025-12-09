@@ -10,6 +10,11 @@ import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { QRCodeSVG } from 'qrcode.react'; // ★ 修正点: この行を追記
 
+// --- 【修正1】音声オブジェクトをアプリ全体で共有（ここに追加） ---
+// ※同じインスタンスを使い回すことで、一度アンロックすればどこでも鳴るようになります
+const globalSuccessAudio = new Audio('/sounds/success.mp3');
+const globalErrorAudio = new Audio('/sounds/error.mp3');
+
 // --- Firebase Configuration ---
 // Firebaseプロジェクトの設定情報。環境変数からAPIキーを読み込むことで、セキュリティを向上させている。
 const firebaseConfig = {
@@ -1308,19 +1313,16 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
             setScanResult(result); // 結果メッセージを表示
 
             // --- 【追加】サウンド再生処理 ---
+            // --- 【修正3】共有の音声を再生 ---
             try {
-                // ファイル名は英数字推奨（例: success.mp3, error.mp3）
-                // ※日本語のままでも動く環境はありますが、念のため変更をおすすめします
-                const soundPath = result.success 
-                    ? '/sounds/success.mp3'   // 元: 決定ボタンを押す押す53.mp3
-                    : '/sounds/error.mp3';    // 元: 警告音1.mp3
-                    
-                const audio = new Audio(soundPath);
-                audio.play().catch(e => console.error("再生エラー:", e));
+                // ファイルの先頭で定義したグローバル変数を使用します
+                const targetAudio = result.success ? globalSuccessAudio : globalErrorAudio;
+                
+                targetAudio.currentTime = 0; // 再生位置を先頭に戻す
+                targetAudio.play().catch(e => console.error("再生エラー:", e));
             } catch (e) {
-                console.error("Audio初期化エラー:", e);
+                console.error("Audio再生処理エラー:", e);
             }
-            // -----------------------------
 
             // 3秒後にロック解除とメッセージ消去
             setTimeout(() => {
@@ -1328,7 +1330,7 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
                 setScanResult(null); // ★これを追加（メッセージを消す）
             }, 3000);
         };
-        
+
         // --- スキャナの設定 ---
         const config = {
             fps: 10,
@@ -2773,6 +2775,31 @@ export default function App() {
     const [selectedDate, setSelectedDate] = useState(getTodayString()); // 選択中の日付
     const [selectedCool, setSelectedCool] = useState('1'); // 選択中のクール
 
+    // --- 【修正2】アプリ全体の音声アンロック処理 ---
+    useEffect(() => {
+        const unlockAudio = () => {
+            // 成功音・失敗音を両方とも一瞬だけ再生して即停止（アンロック）
+            [globalSuccessAudio, globalErrorAudio].forEach(audio => {
+                audio.play().catch(() => {}).then(() => {
+                    audio.pause();
+                    audio.currentTime = 0;
+                });
+            });
+            // 一度実行したらリスナーを削除（無駄な処理を防ぐ）
+            document.removeEventListener('click', unlockAudio);
+            document.removeEventListener('touchstart', unlockAudio);
+        };
+
+        // 画面のどこかを触ったら実行
+        document.addEventListener('click', unlockAudio);
+        document.addEventListener('touchstart', unlockAudio);
+
+        return () => {
+            document.removeEventListener('click', unlockAudio);
+            document.removeEventListener('touchstart', unlockAudio);
+        };
+    }, []);
+    
     // --- Effects ---
     // アプリ起動時にFirebase匿名認証を行う
     useEffect(() => {
