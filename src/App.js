@@ -1298,7 +1298,7 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
     useEffect(() => {
         const html5QrCode = new Html5Qrcode('qr-reader-container');
 
-        // スキャン成功時のコールバック
+    // スキャン成功時のコールバック
         const qrCodeSuccessCallback = (decodedText, decodedResult) => {
             if (isProcessingRef.current) return; // 処理中なら何もしない
             isProcessingRef.current = true;
@@ -1307,12 +1307,28 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
             const result = onScanSuccessRef.current(decodedText);
             setScanResult(result); // 結果メッセージを表示
 
-            // 1秒後に連続スキャン防止フラグを解除
+            // --- 【追加】サウンド再生処理 ---
+            try {
+                // ファイル名は英数字推奨（例: success.mp3, error.mp3）
+                // ※日本語のままでも動く環境はありますが、念のため変更をおすすめします
+                const soundPath = result.success 
+                    ? '/sounds/success.mp3'   // 元: 決定ボタンを押す押す53.mp3
+                    : '/sounds/error.mp3';    // 元: 警告音1.mp3
+                    
+                const audio = new Audio(soundPath);
+                audio.play().catch(e => console.error("再生エラー:", e));
+            } catch (e) {
+                console.error("Audio初期化エラー:", e);
+            }
+            // -----------------------------
+
+            // 3秒後にロック解除とメッセージ消去
             setTimeout(() => {
                 isProcessingRef.current = false;
-            }, 1000);
+                setScanResult(null); // ★これを追加（メッセージを消す）
+            }, 3000);
         };
-
+        
         // --- スキャナの設定 ---
         const config = {
             fps: 10,
@@ -2339,12 +2355,26 @@ const CompactQrScanner = ({ onScanSuccess }) => {
                 const result = onScanSuccessRef.current(decodedText);
                 setScanResult(result); // 画面に結果を表示
 
+                // --- 【追加】サウンド再生処理 ---
+                try {
+                    // publicフォルダ内のファイルを指定
+                    const soundPath = result.success 
+                        ? '/sounds/success.mp3'   // 成功時のファイルパス
+                        : '/sounds/error.mp3';    // 失敗時のファイルパス
+                    
+                    const audio = new Audio(soundPath);
+                    audio.play().catch(e => console.error("再生エラー:", e));
+                } catch (e) {
+                    console.error("Audio初期化エラー:", e);
+                }
+                // -----------------------------
+
                 // 連続読み取り防止 & 結果表示の維持時間
                 setTimeout(() => {
                     isProcessingRef.current = false; // ロック解除
                     // 成功時は少し長く表示を残す（ここでは1秒後に待機表示に戻す）
                     setTimeout(() => setScanResult(null), 1000); 
-                }, 2000); // 2秒間は次の読み取りを行わない
+                }, 3000); // 2秒間は次の読み取りを行わない
             };
 
             // スキャナーの設定
