@@ -1222,6 +1222,18 @@ const StaffPage = () => {
         return result; // スキャン結果をモーダルに返す
     }, [allPatients, selectedFacility, selectedDate]);
 
+    // ▼▼▼▼▼▼▼▼▼▼▼▼ 追加箇所1：音声アンロック用関数 ▼▼▼▼▼▼▼▼▼▼▼▼
+    // ★ 音声アンロック用のヘルパー関数 (ここに追加します)
+    const unlockAudioManually = () => {
+        [globalSuccessAudio, globalErrorAudio].forEach(audio => {
+            audio.play().catch(() => {}).then(() => {
+                audio.pause();
+                audio.currentTime = 0;
+            });
+        });
+    };
+    // ▲▲▲▲▲▲▲▲▲▲▲▲ ここまで追加 ▲▲▲▲▲▲▲▲▲▲▲▲
+
     if (loading) return <LoadingSpinner text="呼び出しリストを読み込み中..." />;
 
     return (
@@ -1237,11 +1249,18 @@ const StaffPage = () => {
             <div className="bg-white p-6 rounded-lg shadow">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xl font-semibold">呼び出し操作 (全クール)</h3>
+                    
+                    {/* ▼▼▼▼▼▼▼▼▼▼▼▼ 変更箇所2：ボタンのonClick処理 ▼▼▼▼▼▼▼▼▼▼▼▼ */}
                     <button
-                        onClick={() => setScannerOpen(true)}
+                        onClick={() => {
+                            unlockAudioManually(); // ★ ここで念押しのアンロック実行
+                            setScannerOpen(true);
+                        }}
                         title="コード読み込み" // ツールチップ
                         className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold p-3 rounded-lg transition" // アイコン用にpaddingを調整
                     >
+                    {/* ▲▲▲▲▲▲▲▲▲▲▲▲ ここまで変更（元のonClickを書き換えてください） ▲▲▲▲▲▲▲▲▲▲▲▲ */}
+                        
                         {/* カメラアイコン */}
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
@@ -1250,6 +1269,7 @@ const StaffPage = () => {
                     </button>
                 </div>
                 <div className="overflow-x-auto">
+                    {/* ... (以下省略なしで記述しますが、変更はありません) */}
                     {actionPatients.length > 0 ? (
                         <div className="space-y-3">
                             {/* 操作対象患者のリスト */}
@@ -2357,19 +2377,17 @@ const CompactQrScanner = ({ onScanSuccess }) => {
                 const result = onScanSuccessRef.current(decodedText);
                 setScanResult(result); // 画面に結果を表示
 
-                // --- 【追加】サウンド再生処理 ---
+                // --- 【修正】ここをグローバル変数を使う形に変更 ---
                 try {
-                    // publicフォルダ内のファイルを指定
-                    const soundPath = result.success 
-                        ? '/sounds/success.mp3'   // 成功時のファイルパス
-                        : '/sounds/error.mp3';    // 失敗時のファイルパス
+                    // ★ 以前のコード（new Audio）は削除し、以下のグローバル変数を使用します
+                    const targetAudio = result.success ? globalSuccessAudio : globalErrorAudio;
                     
-                    const audio = new Audio(soundPath);
-                    audio.play().catch(e => console.error("再生エラー:", e));
+                    targetAudio.currentTime = 0; // 再生位置を先頭に戻す
+                    targetAudio.play().catch(e => console.error("再生エラー:", e));
                 } catch (e) {
-                    console.error("Audio初期化エラー:", e);
+                    console.error("Audio再生処理エラー:", e);
                 }
-                // -----------------------------
+                // ---------------------------------------------
 
                 // 連続読み取り防止 & 結果表示の維持時間
                 setTimeout(() => {
