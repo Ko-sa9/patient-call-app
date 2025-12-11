@@ -1419,16 +1419,18 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
                 </button>
             </div>
 
-            {/* スキャン結果のメッセージ表示 */}
-            {scanResult && (
-                <div className={`mt-4 p-3 rounded text-center font-semibold ${scanResult.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                    {scanResult.message}
-                </div>
-            )}
+            {/* ▼▼▼▼▼▼▼▼▼▼▼▼ 修正箇所：常にメッセージ領域を表示 ▼▼▼▼▼▼▼▼▼▼▼▼ */}
+            <div className={`mt-4 p-3 rounded text-center font-semibold transition-colors duration-300 ${
+                scanResult 
+                    ? (scanResult.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800') // 結果あり(成功/失敗)
+                    : 'bg-gray-100 text-gray-600' // 結果なし(待機中)
+            }`}>
+                {scanResult ? scanResult.message : 'QRコードをかざしてください'}
+            </div>
+            {/* ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ */}
         </CustomModal>
     );
 };
-
 
 // --- 4. Driver Page ---
 // 送迎担当者向けのページ。呼び出し中の患者のみを表示するシンプルな画面。
