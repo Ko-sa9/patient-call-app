@@ -1226,9 +1226,12 @@ const StaffPage = () => {
     // ★ 音声アンロック用のヘルパー関数 (ここに追加します)
     const unlockAudioManually = () => {
         [globalSuccessAudio, globalErrorAudio].forEach(audio => {
+            // ▼▼▼ 修正: 再生前にミュートし、停止後に解除する ▼▼▼
+            audio.muted = true; // ★音が出ないようにする
             audio.play().catch(() => {}).then(() => {
                 audio.pause();
                 audio.currentTime = 0;
+                audio.muted = false; // ★音が出る状態に戻す
             });
         });
     };
@@ -2798,9 +2801,12 @@ export default function App() {
         const unlockAudio = () => {
             // 成功音・失敗音を両方とも一瞬だけ再生して即停止（アンロック）
             [globalSuccessAudio, globalErrorAudio].forEach(audio => {
+                // ▼▼▼ 修正: 再生前にミュートし、停止後に解除する ▼▼▼
+                audio.muted = true; // ★音が出ないようにする
                 audio.play().catch(() => {}).then(() => {
                     audio.pause();
                     audio.currentTime = 0;
+                    audio.muted = false; // ★音が出る状態に戻す
                 });
             });
             // 一度実行したらリスナーを削除（無駄な処理を防ぐ）
