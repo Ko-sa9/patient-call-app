@@ -822,6 +822,28 @@ const useBedData = (currentPage) => {
     });
   }, []);
 
+  // 6. 自動ログ消去機能 (毎日22:00)
+  const lastLogClearDateRef = useRef('');
+
+  useEffect(() => {
+    const checkAndClearLogs = () => {
+      const now = new Date();
+      // 22時00分 かつ、本日まだ自動消去していない場合
+      if (now.getHours() === 22 && now.getMinutes() === 0) {
+        const todayStr = now.toDateString();
+        if (lastLogClearDateRef.current !== todayStr) {
+          setLogs([]); // ログを全消去
+          lastLogClearDateRef.current = todayStr; // 本日は実行済みとして記録
+          console.log("22:00になりました。ログを自動消去しました。");
+        }
+      }
+    };
+
+    // 10秒ごとに時刻をチェック
+    const timer = setInterval(checkAndClearLogs, 10000);
+    return () => clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     if (!bedStatuses) return; 
     const prevStatuses = prevStatusesRef.current; 
