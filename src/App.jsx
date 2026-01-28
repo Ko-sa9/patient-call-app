@@ -11,7 +11,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { QRCodeSVG } from 'qrcode.react';
 
 // ==========================================================================================
-// 1. 初期設定・ユーティリティ (Configuration & Utilities)
+// 1. 初期設定・ユーティリティ
 // ==========================================================================================
 
 // --- 音声オブジェクト ---
@@ -368,6 +368,11 @@ const AdminPage = () => {
     const handleConfirmMasterDelete = async () => { if (confirmMasterDelete.patientId) { await deleteDoc(doc(masterPatientsCollectionRef, confirmMasterDelete.patientId)); setConfirmMasterDelete({ isOpen: false, patientId: null }); } };
     const handleConfirmDailyDelete = async () => { if (confirmDailyDelete.patientId) { await deleteDoc(doc(dailyPatientsCollectionRef(selectedCool), confirmDailyDelete.patientId)); setConfirmDailyDelete({ isOpen: false, patientId: null }); } };
 
+    // --- ★ 追加・修正: 削除確認モーダルを開く関数 ---
+    const handleDeleteMasterClick = (patientId) => { setConfirmMasterDelete({ isOpen: true, patientId }); };
+    const handleDeleteDailyClick = (patientId) => { setConfirmDailyDelete({ isOpen: true, patientId }); };
+    // ---------------------------------------------
+
     const handleLoadPatients = async () => {
         const dayQuery = getDayQueryString(selectedDate);
         if (!dayQuery) { alert("日曜日は対象外です。"); return; }
@@ -527,7 +532,7 @@ const StaffPage = () => {
 
     const unlockAudioManually = () => {
         [globalSuccessAudio, globalErrorAudio].forEach(audio => {
-            audio.muted = true; audio.play().catch(() => { }).then(() => { audio.pause(); audio.currentTime = 0; audio.muted = false; });
+            audio.muted = true; audio.play().catch(() => {}).then(() => { audio.pause(); audio.currentTime = 0; audio.muted = false; });
         });
     };
 
@@ -660,180 +665,180 @@ const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
 
 // --- useBedData Hook ---
 const useBedData = (currentPage) => {
-    const { selectedFacility, selectedDate } = useContext(AppContext);
-    const [bedLayout, setBedLayout] = useState(null);
-    const [bedStatuses, setBedStatuses] = useState(null);
-    const [layoutLoading, setLayoutLoading] = useState(true);
-    const [statusLoading, setStatusLoading] = useState(true);
-    const [error, setError] = useState(null);
+  const { selectedFacility, selectedDate } = useContext(AppContext);
+  const [bedLayout, setBedLayout] = useState(null);
+  const [bedStatuses, setBedStatuses] = useState(null); 
+  const [layoutLoading, setLayoutLoading] = useState(true);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-    const layoutDocRef = useMemo(() => doc(db, 'bedLayouts', selectedFacility), [selectedFacility]);
-    const statusCollectionRef = useMemo(() => collection(db, 'bed_statuses', `${selectedFacility}_${selectedDate}`, 'beds'), [selectedFacility, selectedDate]);
-
-    // 1. レイアウトの購読
-    useEffect(() => {
-        setLayoutLoading(true);
-        const unsubscribe = onSnapshot(layoutDocRef, (docSnap) => {
-            if (docSnap.exists() && docSnap.data().positions) {
-                setBedLayout(docSnap.data().positions);
-            } else {
-                const initialPositions = {};
-                for (let i = 1; i <= totalBeds; i++) {
-                    const row = i <= 10 ? 0 : 1;
-                    const col = i <= 10 ? i - 1 : i - 11;
-                    initialPositions[i.toString()] = { top: 50 + row * 100, left: 10 + col * 90 };
-                }
-                setBedLayout(initialPositions);
-            }
-            setLayoutLoading(false);
-        }, (err) => { console.error("レイアウトの購読に失敗:", err); setError("レイアウトの読み込みに失敗しました。"); setLayoutLoading(false); });
-        return () => unsubscribe();
-    }, [layoutDocRef]);
-
-    // 2. ステータスの購読
-    useEffect(() => {
-        setStatusLoading(true);
-        const q = query(statusCollectionRef);
-        const unsubscribe = onSnapshot(q, async (querySnapshot) => {
-            if (querySnapshot.empty) {
-                console.log("初期化します。");
-                const initialStatuses = {};
-                const batch = writeBatch(db);
-                for (let i = 1; i <= totalBeds; i++) {
-                    const bedNumStr = i.toString();
-                    const bedDocRef = doc(statusCollectionRef, bedNumStr);
-                    batch.set(bedDocRef, { status: "空床" });
-                    initialStatuses[bedNumStr] = "空床";
-                }
-                try { await batch.commit(); setBedStatuses(initialStatuses); } catch (err) { console.error("初期化失敗:", err); setError("初期化に失敗しました。"); }
-            } else {
-                const newStatuses = {};
-                querySnapshot.forEach((doc) => { newStatuses[doc.id] = doc.data().status; });
-                setBedStatuses(newStatuses);
-            }
-            setStatusLoading(false);
-        }, (err) => { console.error("ステータス購読失敗:", err); setError("ステータスの読み込みに失敗しました。"); setStatusLoading(false); });
-        return () => unsubscribe();
-    }, [statusCollectionRef]);
-
-    // 3. クリック処理 (スタッフ用)
-    const handleBedTap = useCallback(async (bedNumber) => {
-        const bedNumStr = bedNumber.toString();
-        if (!bedStatuses) return;
-        const currentStatus = bedStatuses[bedNumStr] || '空床';
-        let newStatus = currentStatus;
-
-        if (currentStatus === '空床') { newStatus = '入室可能'; }
-        else if (currentStatus === '入室可能') { newStatus = '入室連絡済'; }
-        else if (currentStatus === '入室連絡済') { newStatus = '治療中'; }
-        else if (currentStatus === '治療中') { newStatus = '送迎可能'; }
-        else if (currentStatus === '送迎可能') { newStatus = '治療中'; } // キャンセルして治療中に戻す
-        else if (currentStatus === '退室連絡済') { newStatus = '空床'; }
-
-        if (newStatus !== currentStatus) {
-            const bedDocRef = doc(statusCollectionRef, bedNumStr);
-            try { await updateDoc(bedDocRef, { status: newStatus }); } catch (err) { console.error("更新失敗:", err); alert("更新に失敗しました。"); }
+  const layoutDocRef = useMemo(() => doc(db, 'bedLayouts', selectedFacility), [selectedFacility]);
+  const statusCollectionRef = useMemo(() => collection(db, 'bed_statuses', `${selectedFacility}_${selectedDate}`, 'beds'), [selectedFacility, selectedDate]);
+  
+  // 1. レイアウトの購読
+  useEffect(() => {
+    setLayoutLoading(true); 
+    const unsubscribe = onSnapshot(layoutDocRef, (docSnap) => {
+      if (docSnap.exists() && docSnap.data().positions) {
+        setBedLayout(docSnap.data().positions);
+      } else {
+        const initialPositions = {};
+        for (let i = 1; i <= totalBeds; i++) {
+          const row = i <= 10 ? 0 : 1;
+          const col = i <= 10 ? i - 1 : i - 11;
+          initialPositions[i.toString()] = { top: 50 + row * 100, left: 10 + col * 90 };
         }
-    }, [bedStatuses, statusCollectionRef]);
+        setBedLayout(initialPositions);
+      }
+      setLayoutLoading(false);
+    }, (err) => { console.error("レイアウトの購読に失敗:", err); setError("レイアウトの読み込みに失敗しました。"); setLayoutLoading(false); });
+    return () => unsubscribe();
+  }, [layoutDocRef]); 
 
-    // 4. クリック処理 (管理者用: 循環フロー)
-    const handleAdminBedTap = useCallback(async (bedNumber) => {
-        const bedNumStr = bedNumber.toString();
-        if (!bedStatuses) return;
-        const currentStatus = bedStatuses[bedNumStr] || '空床';
-        let newStatus = currentStatus;
-
-        if (currentStatus === '空床') { newStatus = '入室可能'; }
-        else if (currentStatus === '入室可能') { newStatus = '入室連絡済'; }
-        else if (currentStatus === '入室連絡済') { newStatus = '治療中'; }
-        else if (currentStatus === '治療中') { newStatus = '送迎可能'; }
-        else if (currentStatus === '送迎可能') { newStatus = '退室連絡済'; }
-        else if (currentStatus === '退室連絡済') { newStatus = '空床'; }
-
-        if (newStatus !== currentStatus) {
-            const bedDocRef = doc(statusCollectionRef, bedNumStr);
-            try { await updateDoc(bedDocRef, { status: newStatus }); } catch (err) { console.error("更新失敗:", err); alert("更新に失敗しました。"); }
-        }
-    }, [bedStatuses, statusCollectionRef]);
-
-    const handleResetAll = useCallback(async () => {
+  // 2. ステータスの購読
+  useEffect(() => {
+    setStatusLoading(true); 
+    const q = query(statusCollectionRef);
+    const unsubscribe = onSnapshot(q, async (querySnapshot) => {
+      if (querySnapshot.empty) {
+        console.log("初期化します。");
+        const initialStatuses = {};
         const batch = writeBatch(db);
         for (let i = 1; i <= totalBeds; i++) {
-            const bedDocRef = doc(statusCollectionRef, i.toString());
-            batch.update(bedDocRef, { status: "空床" });
+          const bedNumStr = i.toString();
+          const bedDocRef = doc(statusCollectionRef, bedNumStr);
+          batch.set(bedDocRef, { status: "空床" });
+          initialStatuses[bedNumStr] = "空床";
         }
-        try { await batch.commit(); } catch (err) { console.error("全リセット失敗:", err); alert("リセットに失敗しました。"); }
-    }, [statusCollectionRef]);
+        try { await batch.commit(); setBedStatuses(initialStatuses); } catch (err) { console.error("初期化失敗:", err); setError("初期化に失敗しました。"); }
+      } else {
+        const newStatuses = {};
+        querySnapshot.forEach((doc) => { newStatuses[doc.id] = doc.data().status; });
+        setBedStatuses(newStatuses); 
+      }
+      setStatusLoading(false); 
+    }, (err) => { console.error("ステータス購読失敗:", err); setError("ステータスの読み込みに失敗しました。"); setStatusLoading(false); });
+    return () => unsubscribe();
+  }, [statusCollectionRef]); 
 
-    // 5. 音声通知機能
-    const prevStatusesRef = useRef(null);
-    const [isSpeaking, setIsSpeaking] = useState(false);
-    const speechQueueRef = useRef([]);
-    const currentAudioRef = useRef(null);
-    const nextSpeechTimerRef = useRef(null);
-    const nowPlayingRef = useRef(null);
+  // 3. クリック処理 (スタッフ用)
+  const handleBedTap = useCallback(async (bedNumber) => {
+    const bedNumStr = bedNumber.toString();
+    if (!bedStatuses) return;
+    const currentStatus = bedStatuses[bedNumStr] || '空床'; 
+    let newStatus = currentStatus;
+    
+    if (currentStatus === '空床') { newStatus = '入室可能'; }
+    else if (currentStatus === '入室可能') { newStatus = '入室連絡済'; }
+    else if (currentStatus === '入室連絡済') { newStatus = '治療中'; }
+    else if (currentStatus === '治療中') { newStatus = '送迎可能'; }
+    else if (currentStatus === '送迎可能') { newStatus = '治療中'; } // キャンセルして治療中に戻す
+    else if (currentStatus === '退室連絡済') { newStatus = '空床'; }
 
-    const speakNextInQueue = useCallback(() => {
-        if (nextSpeechTimerRef.current) { clearTimeout(nextSpeechTimerRef.current); nextSpeechTimerRef.current = null; }
-        if (speechQueueRef.current.length === 0) { setIsSpeaking(false); nowPlayingRef.current = null; return; }
-        setIsSpeaking(true);
-        const bedNumber = speechQueueRef.current.shift();
-        nowPlayingRef.current = bedNumber;
-        const textToSpeak = `${bedNumber}番ベッド、送迎可能です。`;
-        const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app";
+    if (newStatus !== currentStatus) {
+      const bedDocRef = doc(statusCollectionRef, bedNumStr);
+      try { await updateDoc(bedDocRef, { status: newStatus }); } catch (err) { console.error("更新失敗:", err); alert("更新に失敗しました。"); }
+    }
+  }, [bedStatuses, statusCollectionRef]);
 
-        fetch(functionUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: textToSpeak }), })
-            .then(res => res.json()).then(data => {
-                if (data.audioContent) {
-                    const audio = new Audio("data:audio/mp3;base64," + data.audioContent);
-                    currentAudioRef.current = audio;
-                    audio.play();
-                    audio.onended = () => { currentAudioRef.current = null; nowPlayingRef.current = null; nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000); };
-                } else throw new Error(data.error || 'Audio content not found');
-            }).catch((error) => { console.error("Speech synthesis failed:", error); currentAudioRef.current = null; nowPlayingRef.current = null; nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000); });
-    }, []);
+  // 4. クリック処理 (管理者用: 循環フロー)
+  const handleAdminBedTap = useCallback(async (bedNumber) => {
+    const bedNumStr = bedNumber.toString();
+    if (!bedStatuses) return;
+    const currentStatus = bedStatuses[bedNumStr] || '空床';
+    let newStatus = currentStatus;
+    
+    if (currentStatus === '空床') { newStatus = '入室可能'; }
+    else if (currentStatus === '入室可能') { newStatus = '入室連絡済'; }
+    else if (currentStatus === '入室連絡済') { newStatus = '治療中'; }
+    else if (currentStatus === '治療中') { newStatus = '送迎可能'; }
+    else if (currentStatus === '送迎可能') { newStatus = '退室連絡済'; }
+    else if (currentStatus === '退室連絡済') { newStatus = '空床'; }
 
-    useEffect(() => {
-        if (!bedStatuses) return;
-        const prevStatuses = prevStatusesRef.current;
-        if (prevStatuses) {
-            const newCalls = []; const cancelledBeds = [];
-            for (let i = 1; i <= totalBeds; i++) {
-                const bedNumStr = i.toString();
-                const currentStatus = bedStatuses[bedNumStr];
-                const previousStatus = prevStatuses[bedNumStr];
+    if (newStatus !== currentStatus) {
+      const bedDocRef = doc(statusCollectionRef, bedNumStr);
+      try { await updateDoc(bedDocRef, { status: newStatus }); } catch (err) { console.error("更新失敗:", err); alert("更新に失敗しました。"); }
+    }
+  }, [bedStatuses, statusCollectionRef]);
 
-                if ((previousStatus === '治療中' || previousStatus === '退室連絡済') && currentStatus === '送迎可能') { newCalls.push(bedNumStr); }
-                if (previousStatus === '送迎可能' && currentStatus !== '送迎可能') { cancelledBeds.push(bedNumStr); }
-            }
-            if (cancelledBeds.length > 0) {
-                const cancelledBedSet = new Set(cancelledBeds);
-                speechQueueRef.current = speechQueueRef.current.filter(bedNum => !cancelledBedSet.has(bedNum));
-                if (nowPlayingRef.current && cancelledBedSet.has(nowPlayingRef.current)) {
-                    if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; }
-                    if (nextSpeechTimerRef.current) { clearTimeout(nextSpeechTimerRef.current); nextSpeechTimerRef.current = null; }
-                    nowPlayingRef.current = null; speakNextInQueue();
-                }
-            }
-            if (newCalls.length > 0) {
-                newCalls.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-                speechQueueRef.current.push(...newCalls);
-                if (!isSpeaking && currentPage === 'admin') { speakNextInQueue(); }
-            }
+  const handleResetAll = useCallback(async () => {
+    const batch = writeBatch(db);
+    for (let i = 1; i <= totalBeds; i++) {
+      const bedDocRef = doc(statusCollectionRef, i.toString());
+      batch.update(bedDocRef, { status: "空床" });
+    }
+    try { await batch.commit(); } catch (err) { console.error("全リセット失敗:", err); alert("リセットに失敗しました。"); }
+  }, [statusCollectionRef]);
+
+  // 5. 音声通知機能
+  const prevStatusesRef = useRef(null); 
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const speechQueueRef = useRef([]); 
+  const currentAudioRef = useRef(null);
+  const nextSpeechTimerRef = useRef(null);
+  const nowPlayingRef = useRef(null); 
+
+  const speakNextInQueue = useCallback(() => {
+    if (nextSpeechTimerRef.current) { clearTimeout(nextSpeechTimerRef.current); nextSpeechTimerRef.current = null; }
+    if (speechQueueRef.current.length === 0) { setIsSpeaking(false); nowPlayingRef.current = null; return; }
+    setIsSpeaking(true);
+    const bedNumber = speechQueueRef.current.shift(); 
+    nowPlayingRef.current = bedNumber; 
+    const textToSpeak = `${bedNumber}番ベッド、送迎可能です。`;
+    const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app"; 
+
+    fetch(functionUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: textToSpeak }), })
+    .then(res => res.json()).then(data => {
+      if (data.audioContent) {
+        const audio = new Audio("data:audio/mp3;base64," + data.audioContent);
+        currentAudioRef.current = audio;
+        audio.play();
+        audio.onended = () => { currentAudioRef.current = null; nowPlayingRef.current = null; nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000); };
+      } else throw new Error(data.error || 'Audio content not found');
+    }).catch((error) => { console.error("Speech synthesis failed:", error); currentAudioRef.current = null; nowPlayingRef.current = null; nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000); });
+  }, []);
+
+  useEffect(() => {
+    if (!bedStatuses) return; 
+    const prevStatuses = prevStatusesRef.current; 
+    if (prevStatuses) { 
+      const newCalls = []; const cancelledBeds = []; 
+      for (let i = 1; i <= totalBeds; i++) {
+        const bedNumStr = i.toString();
+        const currentStatus = bedStatuses[bedNumStr];
+        const previousStatus = prevStatuses[bedNumStr];
+        
+        if ((previousStatus === '治療中' || previousStatus === '退室連絡済') && currentStatus === '送迎可能') { newCalls.push(bedNumStr); }
+        if (previousStatus === '送迎可能' && currentStatus !== '送迎可能') { cancelledBeds.push(bedNumStr); }
+      }
+      if (cancelledBeds.length > 0) {
+        const cancelledBedSet = new Set(cancelledBeds);
+        speechQueueRef.current = speechQueueRef.current.filter(bedNum => !cancelledBedSet.has(bedNum));
+        if (nowPlayingRef.current && cancelledBedSet.has(nowPlayingRef.current)) {
+          if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; }
+          if (nextSpeechTimerRef.current) { clearTimeout(nextSpeechTimerRef.current); nextSpeechTimerRef.current = null; }
+          nowPlayingRef.current = null; speakNextInQueue();
         }
-        prevStatusesRef.current = bedStatuses;
-    }, [bedStatuses, isSpeaking, speakNextInQueue, currentPage]);
+      }
+      if (newCalls.length > 0) {
+        newCalls.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        speechQueueRef.current.push(...newCalls);
+        if (!isSpeaking && currentPage === 'admin') { speakNextInQueue(); }
+      }
+    }
+    prevStatusesRef.current = bedStatuses;
+  }, [bedStatuses, isSpeaking, speakNextInQueue, currentPage]);
+  
+  useEffect(() => { return () => { if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; } if (nextSpeechTimerRef.current) { clearTimeout(nextSpeechTimerRef.current); nextSpeechTimerRef.current = null; } speechQueueRef.current = []; setIsSpeaking(false); nowPlayingRef.current = null; }; }, []);
 
-    useEffect(() => { return () => { if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; } if (nextSpeechTimerRef.current) { clearTimeout(nextSpeechTimerRef.current); nextSpeechTimerRef.current = null; } speechQueueRef.current = []; setIsSpeaking(false); nowPlayingRef.current = null; }; }, []);
-
-    const isLoading = layoutLoading || statusLoading;
-    return { bedLayout, bedStatuses, loading: isLoading, error, handleBedTap, handleAdminBedTap, handleResetAll, isSpeaking };
+  const isLoading = layoutLoading || statusLoading;
+  return { bedLayout, bedStatuses, loading: isLoading, error, handleBedTap, handleAdminBedTap, handleResetAll, isSpeaking };
 };
 
 // --- スタイル定義 ---
 const getBedStatusStyle = (status) => {
     switch (status) {
-        case '送迎可能': return 'bg-yellow-400 text-black';
+        case '送迎可能': return 'bg-yellow-400 text-black'; 
         case '退室連絡済': return 'bg-orange-400 text-white';
         case '治療中': return 'bg-green-600 text-white';
         case '入室連絡済': return 'bg-pink-400 text-white';
@@ -844,31 +849,31 @@ const getBedStatusStyle = (status) => {
 
 // --- InpatientAdminPage ---
 const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, handleResetAll, isSpeaking, onShowQrPage }) => {
-    const [isLayoutEditMode, setIsLayoutEditMode] = useState(false);
-    const [confirmResetModal, setConfirmResetModal] = useState(false);
-    const onConfirmReset = () => { handleResetAll(); setConfirmResetModal(false); };
+  const [isLayoutEditMode, setIsLayoutEditMode] = useState(false);
+  const [confirmResetModal, setConfirmResetModal] = useState(false);
+  const onConfirmReset = () => { handleResetAll(); setConfirmResetModal(false); };
 
-    return (
-        <div className="space-y-6">
-            {confirmResetModal && <ConfirmationModal title="全ベッドのリセット確認" message="すべてのベッドを初期状態（空床）に戻します。よろしいですか？" onConfirm={onConfirmReset} onCancel={() => setConfirmResetModal(false)} confirmText="リセット実行" confirmColor="red" />}
-            <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow"><h2 className="text-2xl font-bold">管理・モニター画面</h2><div className="flex items-center space-x-2">
-                <button onClick={onShowQrPage} title="ベッド用QRコード発行" className="font-bold p-3 rounded-lg transition bg-teal-500 hover:bg-teal-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="currentColor" viewBox="0 0 16 16"><path d="M1 1h4v4H1V1z" /><path d="M2 2v2h2V2H2zM6 1h4v4H6V1zM7 2v2h2V2H7zM11 1h4v4h-4V1zm1 1v2h2V2h-2zM1 6h4v4H1V6zm1 1v2h2V7H2zM6 6h4v4H6V6zm1 1v2h2V7H7zM11 6h4v4h-4V6zm1 1v2h2V7h-2zM1 11h4v4H1v-4zm1 1v2h2v-2H2zM6 11h4v4H6v-4zm1 1v2h2v-2H7zM11 11h4v4h-4v-4zm1 1v2h2v-2h-2z" /></svg></button>
-                <button onClick={() => setConfirmResetModal(true)} title="全ベッドリセット" className="font-bold p-3 rounded-lg transition bg-red-600 hover:bg-red-700 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg></button>
-                <button onClick={() => setIsLayoutEditMode(!isLayoutEditMode)} title={isLayoutEditMode ? "編集を終了" : "ベッド配置を編集"} className={`font-bold p-3 rounded-lg transition ${isLayoutEditMode ? 'bg-gray-600 hover:bg-gray-700' : 'bg-yellow-500 hover:bg-yellow-600'} text-white`}>{isLayoutEditMode ? <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg> : <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>}</button>
-            </div></div>
-            {isLayoutEditMode ? <LayoutEditor onSaveComplete={() => setIsLayoutEditMode(false)} initialPositions={bedLayout} /> : <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-auto">{bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => { const status = bedStatuses[bedNumber] || '空床'; const statusStyle = getBedStatusStyle(status); return (<button key={bedNumber} style={{ position: 'absolute', top, left }} className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`} onClick={() => handleAdminBedTap(bedNumber)}><span className="text-xl leading-none">{bedNumber}</span><span className="text-[10px] leading-tight mt-1">{status}</span></button>); })}</div>}
-            {isSpeaking && <div className="fixed bottom-5 right-5 bg-yellow-400 text-black font-bold py-2 px-4 rounded-full shadow-lg flex items-center z-50"><svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>音声再生中...</div>}
-        </div>
-    );
+  return (
+    <div className="space-y-6">
+      {confirmResetModal && <ConfirmationModal title="全ベッドのリセット確認" message="すべてのベッドを初期状態（空床）に戻します。よろしいですか？" onConfirm={onConfirmReset} onCancel={() => setConfirmResetModal(false)} confirmText="リセット実行" confirmColor="red" />}
+      <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow"><h2 className="text-2xl font-bold">管理・モニター画面</h2><div className="flex items-center space-x-2">
+          <button onClick={onShowQrPage} title="ベッド用QRコード発行" className="font-bold p-3 rounded-lg transition bg-teal-500 hover:bg-teal-600 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="currentColor" viewBox="0 0 16 16"><path d="M1 1h4v4H1V1z" /><path d="M2 2v2h2V2H2zM6 1h4v4H6V1zM7 2v2h2V2H7zM11 1h4v4h-4V1zm1 1v2h2V2h-2zM1 6h4v4H1V6zm1 1v2h2V7H2zM6 6h4v4H6V6zm1 1v2h2V7H7zM11 6h4v4h-4V6zm1 1v2h2V7h-2zM1 11h4v4H1v-4zm1 1v2h2v-2H2zM6 11h4v4H6v-4zm1 1v2h2v-2H7zM11 11h4v4h-4v-4zm1 1v2h2v-2h-2z" /></svg></button>
+          <button onClick={() => setConfirmResetModal(true)} title="全ベッドリセット" className="font-bold p-3 rounded-lg transition bg-red-600 hover:bg-red-700 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg></button>
+          <button onClick={() => setIsLayoutEditMode(!isLayoutEditMode)} title={isLayoutEditMode ? "編集を終了" : "ベッド配置を編集"} className={`font-bold p-3 rounded-lg transition ${isLayoutEditMode ? 'bg-gray-600 hover:bg-gray-700' : 'bg-yellow-500 hover:bg-yellow-600'} text-white`}>{isLayoutEditMode ? <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg> : <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>}</button>
+      </div></div>
+      {isLayoutEditMode ? <LayoutEditor onSaveComplete={() => setIsLayoutEditMode(false)} initialPositions={bedLayout} /> : <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-auto">{bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => { const status = bedStatuses[bedNumber] || '空床'; const statusStyle = getBedStatusStyle(status); return (<button key={bedNumber} style={{ position: 'absolute', top, left }} className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`} onClick={() => handleAdminBedTap(bedNumber)}><span className="text-xl leading-none">{bedNumber}</span><span className="text-[10px] leading-tight mt-1">{status}</span></button>); })}</div>}
+      {isSpeaking && <div className="fixed bottom-5 right-5 bg-yellow-400 text-black font-bold py-2 px-4 rounded-full shadow-lg flex items-center z-50"><svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>音声再生中...</div>}
+    </div>
+  );
 };
 
 // --- CompactQrScanner ---
 const CompactQrScanner = ({ onScanSuccess }) => {
-    const [scanResult, setScanResult] = useState(null);
-    const isProcessingRef = useRef(false);
+    const [scanResult, setScanResult] = useState(null); 
+    const isProcessingRef = useRef(false); 
     const onScanSuccessRef = useRef(onScanSuccess);
     useEffect(() => { onScanSuccessRef.current = onScanSuccess; }, [onScanSuccess]);
-    const [facingMode, setFacingMode] = useState('environment');
+    const [facingMode, setFacingMode] = useState('environment'); 
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -877,7 +882,7 @@ const CompactQrScanner = ({ onScanSuccess }) => {
                 if (isProcessingRef.current) return;
                 isProcessingRef.current = true;
                 const result = onScanSuccessRef.current(decodedText);
-                setScanResult(result);
+                setScanResult(result); 
                 try {
                     const targetAudio = result.success ? globalSuccessAudio : globalErrorAudio;
                     targetAudio.currentTime = 0; targetAudio.play().catch(e => console.error("再生エラー:", e));
@@ -888,7 +893,7 @@ const CompactQrScanner = ({ onScanSuccess }) => {
             html5QrCode.start({ facingMode: facingMode }, config, qrCodeSuccessCallback, undefined).catch(err => { console.error("スキャン開始エラー:", err); setScanResult({ success: false, message: "カメラ起動失敗" }); });
             return () => { if (html5QrCode && html5QrCode.isScanning) { html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error); } };
         }, 100);
-        return () => clearTimeout(timer);
+        return () => clearTimeout(timer); 
     }, [facingMode]);
 
     return (
@@ -907,38 +912,38 @@ const CompactQrScanner = ({ onScanSuccess }) => {
 
 // --- InpatientStaffPage ---
 const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
-    const handleScanSuccess = useCallback((decodedText) => {
-        const bedNumber = parseInt(decodedText, 10);
-        if (bedNumber >= 1 && bedNumber <= totalBeds) {
-            const bedNumStr = bedNumber.toString();
-            if (bedStatuses && bedStatuses[bedNumStr] === '治療中') {
-                handleBedTap(bedNumStr);
-                return { success: true, message: `No.${bedNumStr} 送迎可能` };
-            } else if (bedStatuses && bedStatuses[bedNumStr] !== '治療中') {
-                return { success: false, message: `No.${bedNumStr} 対象外` };
-            } else { return { success: false, message: "取得エラー" }; }
-        } else { return { success: false, message: `無効コード` }; }
-    }, [bedStatuses, handleBedTap]);
+  const handleScanSuccess = useCallback((decodedText) => {
+    const bedNumber = parseInt(decodedText, 10);
+    if (bedNumber >= 1 && bedNumber <= totalBeds) {
+      const bedNumStr = bedNumber.toString();
+      if (bedStatuses && bedStatuses[bedNumStr] === '治療中') {
+        handleBedTap(bedNumStr); 
+        return { success: true, message: `No.${bedNumStr} 送迎可能` }; 
+      } else if (bedStatuses && bedStatuses[bedNumStr] !== '治療中') {
+        return { success: false, message: `No.${bedNumStr} 対象外` }; 
+      } else { return { success: false, message: "取得エラー" }; }
+    } else { return { success: false, message: `無効コード` }; }
+  }, [bedStatuses, handleBedTap]);
 
-    return (
-        <div>
-            <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow mb-4 sticky top-0 z-20"><h2 className="text-2xl font-bold text-gray-800">スタッフ操作</h2><div className="text-sm text-gray-500 font-medium">リスト・カメラ同期中</div></div>
-            <CompactQrScanner onScanSuccess={handleScanSuccess} />
-            <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-auto">
-                {bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
-                    const status = bedStatuses[bedNumber] || '空床';
-                    const statusStyle = getBedStatusStyle(status);
-                    return (<button key={bedNumber} style={{ position: 'absolute', top, left }} className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`} onClick={() => handleBedTap(bedNumber)}><span className="text-xl leading-none">{bedNumber}</span><span className="text-[10px] leading-tight mt-1">{status}</span></button>);
-                })}
-            </div>
-        </div>
-    );
+  return (
+    <div>
+      <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow mb-4 sticky top-0 z-20"><h2 className="text-2xl font-bold text-gray-800">スタッフ操作</h2><div className="text-sm text-gray-500 font-medium">リスト・カメラ同期中</div></div>
+      <CompactQrScanner onScanSuccess={handleScanSuccess} />
+      <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-auto">
+        {bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
+          const status = bedStatuses[bedNumber] || '空床';
+          const statusStyle = getBedStatusStyle(status);
+          return (<button key={bedNumber} style={{ position: 'absolute', top, left }} className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`} onClick={() => handleBedTap(bedNumber)}><span className="text-xl leading-none">{bedNumber}</span><span className="text-[10px] leading-tight mt-1">{status}</span></button>);
+        })}
+      </div>
+    </div>
+  );
 };
 
 // --- InpatientView ---
 const InpatientView = ({ user, onGoBack }) => {
     const [currentPage, setCurrentPage] = useState(isMobileDevice() ? 'staff' : 'admin');
-    const [showQrPage, setShowQrPage] = useState(false);
+    const [showQrPage, setShowQrPage] = useState(false); 
     const hideCoolSelector = true;
 
     const { bedLayout, bedStatuses, loading, error, handleBedTap, handleAdminBedTap, handleResetAll, isSpeaking } = useBedData(currentPage);
@@ -1010,10 +1015,10 @@ const StaffView = ({ user, onGoBack }) => {
 
 const PublicView = ({ user, onGoBack }) => (<AppLayout user={user} onGoBack={onGoBack} hideCoolSelector={true} navButtons={<span className="font-semibold text-gray-700">送迎担当者用</span>}><DriverPage /></AppLayout>);
 
-const FacilitySelectionPage = ({ onSelectFacility, onGoBack, selectedRole }) => {
+const FacilitySelectionPage = ({ onSelectFacility, onGoBack, selectedRole}) => {
     const facilitiesToShow = selectedRole === 'public' ? FACILITIES.filter(f => f !== "入院透析室") : FACILITIES;
     return (
-        <div className="flex items-center justify-center h-screen bg-gray-100"><div className="text-center p-8 bg-white rounded-xl shadow-lg max-w-md w-full"><h1 className="text-3xl font-bold text-gray-800 mb-4">施設を選択してください</h1><p className="text-gray-600 mb-8">表示する施設を選択してください。</p><div className="space-y-4">{facilitiesToShow.map(facility => (<button key={facility} onClick={() => onSelectFacility(facility)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-lg transition duration-300 text-lg">{facility}</button>))}</div><button onClick={onGoBack} className="mt-8 text-sm text-gray-600 hover:text-blue-600 transition">役割選択に戻る</button></div></div>
+    <div className="flex items-center justify-center h-screen bg-gray-100"><div className="text-center p-8 bg-white rounded-xl shadow-lg max-w-md w-full"><h1 className="text-3xl font-bold text-gray-800 mb-4">施設を選択してください</h1><p className="text-gray-600 mb-8">表示する施設を選択してください。</p><div className="space-y-4">{facilitiesToShow.map(facility => (<button key={facility} onClick={() => onSelectFacility(facility)} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-lg transition duration-300 text-lg">{facility}</button>))}</div><button onClick={onGoBack} className="mt-8 text-sm text-gray-600 hover:text-blue-600 transition">役割選択に戻る</button></div></div>
     )
 };
 
@@ -1041,13 +1046,13 @@ export default function App() {
 
     useEffect(() => {
         const unlockAudio = () => {
-            [globalSuccessAudio, globalErrorAudio].forEach(audio => { audio.muted = true; audio.play().catch(() => { }).then(() => { audio.pause(); audio.currentTime = 0; audio.muted = false; }); });
+            [globalSuccessAudio, globalErrorAudio].forEach(audio => { audio.muted = true; audio.play().catch(() => {}).then(() => { audio.pause(); audio.currentTime = 0; audio.muted = false; }); });
             document.removeEventListener('click', unlockAudio); document.removeEventListener('touchstart', unlockAudio);
         };
         document.addEventListener('click', unlockAudio); document.addEventListener('touchstart', unlockAudio);
         return () => { document.removeEventListener('click', unlockAudio); document.removeEventListener('touchstart', unlockAudio); };
     }, []);
-
+    
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (currentUser) { setUser(currentUser); } else { try { await signInAnonymously(auth); } catch (error) { console.error("Anonymous sign-in failed:", error); } }
@@ -1068,7 +1073,7 @@ export default function App() {
             <AppContext.Provider value={{ selectedFacility, setSelectedFacility, selectedDate, setSelectedDate, selectedCool, setSelectedCool }}>
                 {viewMode === 'login' && <RoleSelectionPage onSelectRole={handleRoleSelect} />}
                 {viewMode === 'password' && <PasswordModal onSuccess={handlePasswordSuccess} onCancel={() => setViewMode('login')} />}
-                {viewMode === 'facilitySelection' && <FacilitySelectionPage onSelectFacility={handleFacilitySelect} onGoBack={() => setViewMode('login')} selectedRole={selectedRole} />}
+                {viewMode === 'facilitySelection' && <FacilitySelectionPage onSelectFacility={handleFacilitySelect} onGoBack={() => setViewMode('login')} selectedRole={selectedRole} />} 
                 {viewMode === 'staff' && selectedFacility === "入院透析室" && (<InpatientView user={user} onGoBack={handleGoBack} />)}
                 {viewMode === 'staff' && selectedFacility !== "入院透析室" && (<StaffView user={user} onGoBack={handleGoBack} />)}
                 {viewMode === 'public' && <PublicView user={user} onGoBack={handleGoBack} />}
