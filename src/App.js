@@ -1949,7 +1949,9 @@ const useBedData = (currentPage) => { // ★ 修正点: currentPage を引数で
     if (currentStatus === '空床') {
       newStatus = '入室可能'; // 準備完了
     } else if (currentStatus === '入室可能') {
-      newStatus = '治療中';   // 患者入室
+      newStatus = '入室連絡済'; // ★ 修正: 入室可能の次は入室連絡済へ
+    } else if (currentStatus === '入室連絡済') {
+      newStatus = '治療中';     // ★ 修正: 連絡した後に治療中(入室)へ
     } else if (currentStatus === '治療中') {
       newStatus = '送迎可能'; // 透析終了
     } else if (currentStatus === '送迎可能') {
@@ -1981,9 +1983,9 @@ const useBedData = (currentPage) => { // ★ 修正点: currentPage を引数で
     if (currentStatus === '空床') {
         newStatus = '入室可能';
     } else if (currentStatus === '入室可能') {
-        newStatus = '治療中';
-    } else if (currentStatus === '治療中') {
-      newStatus = '送迎可能';
+        newStatus = '入室連絡済'; // ★ 追加
+    } else if (currentStatus === '入室連絡済') {
+        newStatus = '治療中';     // ★ 追加
     } else if (currentStatus === '送迎可能') {
       newStatus = '連絡済';
     } else if (currentStatus === '連絡済') {
@@ -2185,19 +2187,18 @@ const useBedData = (currentPage) => { // ★ 修正点: currentPage を引数で
 // --- ベッドの状態に応じたスタイルを返すヘルパー関数 ---
 const getBedStatusStyle = (status) => {
     switch (status) {
-        case '送迎可能': // 黄色（点滅なし）
+        case '送迎可能':
             return 'bg-yellow-400 text-black'; 
-        case '連絡済': // オレンジ
-            // 【2025-11-26 修正】 トーンを少し落とす (500 -> 400)
+        case '連絡済':
             return 'bg-orange-400 text-white';
-        case '治療中': // 緑
-            // 【2025-11-26 修正】 トーンを少し落とす (500 -> 600)
+        case '治療中':
             return 'bg-green-600 text-white';
-        case '入室可能': // 青
+        case '入室連絡済': // ★追加: ピンク色
+            return 'bg-pink-400 text-white';
+        case '入室可能':
             return 'bg-blue-500 text-white';
-        case '空床': // グレー
+        case '空床':
         default:
-            // デフォルトまたは空床はグレー
             return 'bg-gray-400 text-white';
     }
 };
