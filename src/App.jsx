@@ -368,10 +368,8 @@ const AdminPage = () => {
     const handleConfirmMasterDelete = async () => { if (confirmMasterDelete.patientId) { await deleteDoc(doc(masterPatientsCollectionRef, confirmMasterDelete.patientId)); setConfirmMasterDelete({ isOpen: false, patientId: null }); } };
     const handleConfirmDailyDelete = async () => { if (confirmDailyDelete.patientId) { await deleteDoc(doc(dailyPatientsCollectionRef(selectedCool), confirmDailyDelete.patientId)); setConfirmDailyDelete({ isOpen: false, patientId: null }); } };
 
-    // --- ★ 追加・修正: 削除確認モーダルを開く関数 ---
     const handleDeleteMasterClick = (patientId) => { setConfirmMasterDelete({ isOpen: true, patientId }); };
     const handleDeleteDailyClick = (patientId) => { setConfirmDailyDelete({ isOpen: true, patientId }); };
-    // ---------------------------------------------
 
     const handleLoadPatients = async () => {
         const dayQuery = getDayQueryString(selectedDate);
@@ -772,7 +770,7 @@ const useBedData = (currentPage) => {
 
   // 5. 音声通知機能
   const prevStatusesRef = useRef(null); 
-  const [isSpeaking, setIsSpeaking] = useState(false);
+  const isPlayingRef = useRef(false); // 再生中フラグをRefで管理（即時性のため）
   const speechQueueRef = useRef([]); 
   const currentAudioRef = useRef(null);
   const nextSpeechTimerRef = useRef(null);
@@ -780,8 +778,22 @@ const useBedData = (currentPage) => {
 
   const speakNextInQueue = useCallback(() => {
     if (nextSpeechTimerRef.current) { clearTimeout(nextSpeechTimerRef.current); nextSpeechTimerRef.current = null; }
-    if (speechQueueRef.current.length === 0) { setIsSpeaking(false); nowPlayingRef.current = null; return; }
-    setIsSpeaking(true);
+    
+    // キューが空なら終了
+    if (speechQueueRef.current.length === 0) { 
+        isPlayingRef.current = false;
+        nowPlayingRef.current = null; 
+        return; 
+    }
+
+    // すでに再生中なら何もしない（ここが重複防止の要）
+    if (isPlayingRef.current && nowPlayingRef.current) {
+        return;
+    }
+
+    // 再生開始フラグを立てる
+    isPlayingRef.current = true;
+    
     const bedNumber = speechQueueRef.current.shift(); 
     nowPlayingRef.current = bedNumber; 
     const textToSpeak = `${bedNumber}番ベッド、送迎可能です。`;
@@ -793,46 +805,90 @@ const useBedData = (currentPage) => {
         const audio = new Audio("data:audio/mp3;base64," + data.audioContent);
         currentAudioRef.current = audio;
         audio.play();
-        audio.onended = () => { currentAudioRef.current = null; nowPlayingRef.current = null; nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000); };
+        // 再生終了時に次を呼ぶ
+        audio.onended = () => { 
+            currentAudioRef.current = null; 
+            nowPlayingRef.current = null;
+            // 少し間隔を空けて次へ
+            nextSpeechTimerRef.current = setTimeout(() => {
+                isPlayingRef.current = false; // フラグを下ろして次を許可
+                speakNextInQueue();
+            }, 1000); 
+        };
       } else throw new Error(data.error || 'Audio content not found');
-    }).catch((error) => { console.error("Speech synthesis failed:", error); currentAudioRef.current = null; nowPlayingRef.current = null; nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000); });
+    }).catch((error) => { 
+        console.error("Speech synthesis failed:", error); 
+        currentAudioRef.current = null; 
+        nowPlayingRef.current = null;
+        // エラー時も次へ進める
+        isPlayingRef.current = false;
+        nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000); 
+    });
   }, []);
 
   useEffect(() => {
     if (!bedStatuses) return; 
     const prevStatuses = prevStatusesRef.current; 
     if (prevStatuses) { 
-      const newCalls = []; const cancelledBeds = []; 
+      const newCalls = []; 
+      const cancelledBeds = []; 
+      let shouldPlayEnterSound = false; // 入室可能通知音フラグ
+
       for (let i = 1; i <= totalBeds; i++) {
         const bedNumStr = i.toString();
         const currentStatus = bedStatuses[bedNumStr];
         const previousStatus = prevStatuses[bedNumStr];
         
-        if ((previousStatus === '治療中' || previousStatus === '退室連絡済') && currentStatus === '送迎可能') { newCalls.push(bedNumStr); }
-        if (previousStatus === '送迎可能' && currentStatus !== '送迎可能') { cancelledBeds.push(bedNumStr); }
+        // 送迎可能になった場合
+        if ((previousStatus === '治療中' || previousStatus === '退室連絡済') && currentStatus === '送迎可能') { 
+            newCalls.push(bedNumStr); 
+        }
+        
+        // キャンセル判定
+        if (previousStatus === '送迎可能' && currentStatus !== '送迎可能') { 
+            cancelledBeds.push(bedNumStr); 
+        }
+
+        // ★追加: 入室可能になった場合
+        if (previousStatus === '空床' && currentStatus === '入室可能') {
+            shouldPlayEnterSound = true;
+        }
       }
+
+      // キャンセル処理
       if (cancelledBeds.length > 0) {
         const cancelledBedSet = new Set(cancelledBeds);
         speechQueueRef.current = speechQueueRef.current.filter(bedNum => !cancelledBedSet.has(bedNum));
         if (nowPlayingRef.current && cancelledBedSet.has(nowPlayingRef.current)) {
           if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; }
           if (nextSpeechTimerRef.current) { clearTimeout(nextSpeechTimerRef.current); nextSpeechTimerRef.current = null; }
-          nowPlayingRef.current = null; speakNextInQueue();
+          nowPlayingRef.current = null; 
+          isPlayingRef.current = false;
+          speakNextInQueue();
         }
       }
+
+      // 新規読み上げ追加
       if (newCalls.length > 0) {
         newCalls.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
         speechQueueRef.current.push(...newCalls);
-        if (!isSpeaking && currentPage === 'admin') { speakNextInQueue(); }
+        if (!isPlayingRef.current && currentPage === 'admin') { speakNextInQueue(); }
+      }
+
+      // ★追加: 入室可能通知音の再生（読み上げとは独立して再生）
+      if (shouldPlayEnterSound && currentPage === 'admin') {
+          const audio = new Audio('/sounds/success.mp3'); 
+          audio.volume = 0.5; 
+          audio.play().catch(e => console.error("SE再生エラー", e));
       }
     }
     prevStatusesRef.current = bedStatuses;
-  }, [bedStatuses, isSpeaking, speakNextInQueue, currentPage]);
+  }, [bedStatuses, speakNextInQueue, currentPage]);
   
-  useEffect(() => { return () => { if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; } if (nextSpeechTimerRef.current) { clearTimeout(nextSpeechTimerRef.current); nextSpeechTimerRef.current = null; } speechQueueRef.current = []; setIsSpeaking(false); nowPlayingRef.current = null; }; }, []);
+  useEffect(() => { return () => { if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; } if (nextSpeechTimerRef.current) { clearTimeout(nextSpeechTimerRef.current); nextSpeechTimerRef.current = null; } speechQueueRef.current = []; isPlayingRef.current = false; nowPlayingRef.current = null; }; }, []);
 
   const isLoading = layoutLoading || statusLoading;
-  return { bedLayout, bedStatuses, loading: isLoading, error, handleBedTap, handleAdminBedTap, handleResetAll, isSpeaking };
+  return { bedLayout, bedStatuses, loading: isLoading, error, handleBedTap, handleAdminBedTap, handleResetAll, isSpeaking: isPlayingRef.current };
 };
 
 // --- スタイル定義 ---
