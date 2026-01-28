@@ -921,8 +921,8 @@ const LogPanel = ({ logs }) => (
             ) : (
                 <ul className="space-y-1">
                     {logs.map((log, i) => (
-                        // text-[10px] から text-[16px] へ縮小
-                        <li key={i} className="text-[16px] text-gray-700 border-b border-gray-50 last:border-0 py-1 leading-none">
+                        // text-[16px] から text-[14px] へ縮小
+                        <li key={i} className="text-[14px] text-gray-700 border-b border-gray-50 last:border-0 py-1 leading-none">
                             <span className="font-mono font-semibold mr-1 text-blue-600">{log.time}</span>
                             {log.message}
                         </li>
