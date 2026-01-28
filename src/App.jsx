@@ -843,7 +843,7 @@ const useBedData = (currentPage) => {
         // 送迎可能になった場合
         if ((previousStatus === '治療中' || previousStatus === '退室連絡済') && currentStatus === '送迎可能') { 
             newCalls.push(bedNumStr); 
-            newLogs.push({ time: timeStr, message: `NO.${bedNumStr}が送迎可能になりました。` });
+            newLogs.push({ time: timeStr, message: `No.${bedNumStr} 送迎可能。` });
         }
         
         // キャンセル判定
@@ -854,7 +854,7 @@ const useBedData = (currentPage) => {
         // 入室可能になった場合
         if (previousStatus === '空床' && currentStatus === '入室可能') {
             shouldPlayEnterSound = true;
-            newLogs.push({ time: timeStr, message: `NO.${bedNumStr}が入室可能になりました。` });
+            newLogs.push({ time: timeStr, message: `No.${bedNumStr} 入室可能。` });
         }
       }
 
@@ -912,17 +912,16 @@ const getBedStatusStyle = (status) => {
 
 // --- LogPanel ---
 const LogPanel = ({ logs }) => (
-    <div className="bg-white p-4 rounded-lg shadow border border-gray-200 mt-4">
-        <h3 className="text-lg font-bold mb-2 text-gray-800 border-b pb-2 sticky top-0 bg-white">システムメッセージ</h3>
-        {/* 高さを固定してスクロール可能に */}
-        <div className="h-[150px] overflow-y-auto">
+    <div className="bg-white p-3 rounded-lg shadow border border-gray-200 flex-shrink-0 w-full md:w-64">
+        <h3 className="text-sm font-bold mb-2 text-gray-800 border-b pb-1 sticky top-0 bg-white">ログ</h3>
+        <div className="h-[350px] overflow-y-auto">
             {logs.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center mt-4">履歴はありません</p>
+                <p className="text-xs text-gray-400 text-center mt-4">履歴なし</p>
             ) : (
                 <ul className="space-y-1">
                     {logs.map((log, i) => (
-                        <li key={i} className="text-sm text-gray-700 border-b border-gray-100 last:border-0 py-1">
-                            <span className="font-mono font-semibold mr-2 text-blue-600">{log.time}</span>
+                        <li key={i} className="text-[11px] text-gray-700 border-b border-gray-50 last:border-0 py-1 leading-none">
+                            <span className="font-mono font-semibold mr-1 text-blue-600">{log.time}</span>
                             {log.message}
                         </li>
                     ))}
@@ -947,11 +946,33 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, handleR
           <button onClick={() => setIsLayoutEditMode(!isLayoutEditMode)} title={isLayoutEditMode ? "編集を終了" : "ベッド配置を編集"} className={`font-bold p-3 rounded-lg transition ${isLayoutEditMode ? 'bg-gray-600 hover:bg-gray-700' : 'bg-yellow-500 hover:bg-yellow-600'} text-white`}>{isLayoutEditMode ? <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg> : <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>}</button>
       </div></div>
       
-      {/* ベッド配置図 */}
-      {isLayoutEditMode ? <LayoutEditor onSaveComplete={() => setIsLayoutEditMode(false)} initialPositions={bedLayout} /> : <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-auto">{bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => { const status = bedStatuses[bedNumber] || '空床'; const statusStyle = getBedStatusStyle(status); return (<button key={bedNumber} style={{ position: 'absolute', top, left }} className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`} onClick={() => handleAdminBedTap(bedNumber)}><span className="text-xl leading-none">{bedNumber}</span><span className="text-[10px] leading-tight mt-1">{status}</span></button>); })}</div>}
-      
-      {/* ★ 変更: ログパネルを下部に配置 */}
-      <LogPanel logs={logs} />
+      {/* ベッド配置図とログの横並びレイアウト */}
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="flex-grow">
+          {isLayoutEditMode ? (
+            <LayoutEditor onSaveComplete={() => setIsLayoutEditMode(false)} initialPositions={bedLayout} />
+          ) : (
+            <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-auto">
+              {bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => { 
+                const status = bedStatuses[bedNumber] || '空床'; 
+                const statusStyle = getBedStatusStyle(status); 
+                return (
+                  <button key={bedNumber} style={{ position: 'absolute', top, left }} 
+                    className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`} 
+                    onClick={() => handleAdminBedTap(bedNumber)}
+                  >
+                    <span className="text-xl leading-none">{bedNumber}</span>
+                    <span className="text-[10px] leading-tight mt-1">{status}</span>
+                  </button>
+                ); 
+              })}
+            </div>
+          )}
+        </div>
+        
+        {/* ログパネルを右側に配置 */}
+        {!isLayoutEditMode && <LogPanel logs={logs} />}
+      </div>
 
       {isSpeaking && <div className="fixed bottom-5 right-5 bg-yellow-400 text-black font-bold py-2 px-4 rounded-full shadow-lg flex items-center z-50"><svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>音声再生中...</div>}
     </div>
