@@ -843,7 +843,7 @@ const useBedData = (currentPage) => {
         // 送迎可能になった場合
         if ((previousStatus === '治療中' || previousStatus === '退室連絡済') && currentStatus === '送迎可能') { 
             newCalls.push(bedNumStr); 
-            newLogs.push({ time: timeStr, message: `No.${bedNumStr} 送迎可能。` });
+            newLogs.push({ time: timeStr, message: `No.${bedNumStr} 送迎可能` });
         }
         
         // キャンセル判定
@@ -854,7 +854,7 @@ const useBedData = (currentPage) => {
         // 入室可能になった場合
         if (previousStatus === '空床' && currentStatus === '入室可能') {
             shouldPlayEnterSound = true;
-            newLogs.push({ time: timeStr, message: `No.${bedNumStr} 入室可能。` });
+            newLogs.push({ time: timeStr, message: `No.${bedNumStr} 入室可能` });
         }
       }
 
@@ -912,7 +912,8 @@ const getBedStatusStyle = (status) => {
 
 // --- LogPanel ---
 const LogPanel = ({ logs }) => (
-    <div className="bg-white p-3 rounded-lg shadow border border-gray-200 flex-shrink-0 w-full md:w-64">
+    // md:w-64 から md:w-48 へ縮小
+    <div className="bg-white p-3 rounded-lg shadow border border-gray-200 flex-shrink-0 w-full md:w-48">
         <h3 className="text-sm font-bold mb-2 text-gray-800 border-b pb-1 sticky top-0 bg-white">ログ</h3>
         <div className="h-[350px] overflow-y-auto">
             {logs.length === 0 ? (
@@ -920,7 +921,8 @@ const LogPanel = ({ logs }) => (
             ) : (
                 <ul className="space-y-1">
                     {logs.map((log, i) => (
-                        <li key={i} className="text-[11px] text-gray-700 border-b border-gray-50 last:border-0 py-1 leading-none">
+                        // text-[11px] から text-[10px] へ縮小
+                        <li key={i} className="text-[10px] text-gray-700 border-b border-gray-50 last:border-0 py-1 leading-none">
                             <span className="font-mono font-semibold mr-1 text-blue-600">{log.time}</span>
                             {log.message}
                         </li>
