@@ -669,6 +669,9 @@ const useBedData = (currentPage) => {
   const [layoutLoading, setLayoutLoading] = useState(true);
   const [statusLoading, setStatusLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // ★ 追加: 操作履歴ログのstate
+  const [logs, setLogs] = useState([]);
 
   const layoutDocRef = useMemo(() => doc(db, 'bedLayouts', selectedFacility), [selectedFacility]);
   const statusCollectionRef = useMemo(() => collection(db, 'bed_statuses', `${selectedFacility}_${selectedDate}`, 'beds'), [selectedFacility, selectedDate]);
@@ -768,9 +771,9 @@ const useBedData = (currentPage) => {
     try { await batch.commit(); } catch (err) { console.error("全リセット失敗:", err); alert("リセットに失敗しました。"); }
   }, [statusCollectionRef]);
 
-  // 5. 音声通知機能
+  // 5. 音声通知機能 & ログ機能
   const prevStatusesRef = useRef(null); 
-  const isPlayingRef = useRef(false); // 再生中フラグをRefで管理（即時性のため）
+  const isPlayingRef = useRef(false); 
   const speechQueueRef = useRef([]); 
   const currentAudioRef = useRef(null);
   const nextSpeechTimerRef = useRef(null);
@@ -779,19 +782,16 @@ const useBedData = (currentPage) => {
   const speakNextInQueue = useCallback(() => {
     if (nextSpeechTimerRef.current) { clearTimeout(nextSpeechTimerRef.current); nextSpeechTimerRef.current = null; }
     
-    // キューが空なら終了
     if (speechQueueRef.current.length === 0) { 
         isPlayingRef.current = false;
         nowPlayingRef.current = null; 
         return; 
     }
 
-    // すでに再生中なら何もしない（ここが重複防止の要）
     if (isPlayingRef.current && nowPlayingRef.current) {
         return;
     }
 
-    // 再生開始フラグを立てる
     isPlayingRef.current = true;
     
     const bedNumber = speechQueueRef.current.shift(); 
@@ -805,13 +805,11 @@ const useBedData = (currentPage) => {
         const audio = new Audio("data:audio/mp3;base64," + data.audioContent);
         currentAudioRef.current = audio;
         audio.play();
-        // 再生終了時に次を呼ぶ
         audio.onended = () => { 
             currentAudioRef.current = null; 
             nowPlayingRef.current = null;
-            // 少し間隔を空けて次へ
             nextSpeechTimerRef.current = setTimeout(() => {
-                isPlayingRef.current = false; // フラグを下ろして次を許可
+                isPlayingRef.current = false; 
                 speakNextInQueue();
             }, 1000); 
         };
@@ -820,7 +818,6 @@ const useBedData = (currentPage) => {
         console.error("Speech synthesis failed:", error); 
         currentAudioRef.current = null; 
         nowPlayingRef.current = null;
-        // エラー時も次へ進める
         isPlayingRef.current = false;
         nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000); 
     });
@@ -832,7 +829,13 @@ const useBedData = (currentPage) => {
     if (prevStatuses) { 
       const newCalls = []; 
       const cancelledBeds = []; 
-      let shouldPlayEnterSound = false; // 入室可能通知音フラグ
+      let shouldPlayEnterSound = false; 
+      
+      // ★ 追加: 新しいログを一時保存する配列
+      const newLogs = [];
+      const now = new Date();
+      // hh.mm.ss 形式に整形 (例: 14.30.05)
+      const timeStr = now.toLocaleTimeString('ja-JP', { hour12: false }).replace(/:/g, '.');
 
       for (let i = 1; i <= totalBeds; i++) {
         const bedNumStr = i.toString();
@@ -842,6 +845,8 @@ const useBedData = (currentPage) => {
         // 送迎可能になった場合
         if ((previousStatus === '治療中' || previousStatus === '退室連絡済') && currentStatus === '送迎可能') { 
             newCalls.push(bedNumStr); 
+            // ★ 追加: ログ記録
+            newLogs.push({ time: timeStr, message: `NO.${bedNumStr}が送迎可能になりました。` });
         }
         
         // キャンセル判定
@@ -849,10 +854,17 @@ const useBedData = (currentPage) => {
             cancelledBeds.push(bedNumStr); 
         }
 
-        // ★追加: 入室可能になった場合
+        // 入室可能になった場合
         if (previousStatus === '空床' && currentStatus === '入室可能') {
             shouldPlayEnterSound = true;
+            // ★ 追加: ログ記録
+            newLogs.push({ time: timeStr, message: `NO.${bedNumStr}が入室可能になりました。` });
         }
+      }
+
+      // ★ 追加: ログがあれば状態を更新
+      if (newLogs.length > 0) {
+          setLogs(prev => [...newLogs, ...prev].slice(0, 100)); // 最新100件まで保持
       }
 
       // キャンセル処理
@@ -875,7 +887,7 @@ const useBedData = (currentPage) => {
         if (!isPlayingRef.current && currentPage === 'admin') { speakNextInQueue(); }
       }
 
-      // ★追加: 入室可能通知音の再生（読み上げとは独立して再生）
+      // 入室可能通知音の再生
       if (shouldPlayEnterSound && currentPage === 'admin') {
           const audio = new Audio('/sounds/enter.mp3'); 
           audio.volume = 0.5; 
@@ -888,7 +900,7 @@ const useBedData = (currentPage) => {
   useEffect(() => { return () => { if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; } if (nextSpeechTimerRef.current) { clearTimeout(nextSpeechTimerRef.current); nextSpeechTimerRef.current = null; } speechQueueRef.current = []; isPlayingRef.current = false; nowPlayingRef.current = null; }; }, []);
 
   const isLoading = layoutLoading || statusLoading;
-  return { bedLayout, bedStatuses, loading: isLoading, error, handleBedTap, handleAdminBedTap, handleResetAll, isSpeaking: isPlayingRef.current };
+  return { bedLayout, bedStatuses, loading: isLoading, error, handleBedTap, handleAdminBedTap, handleResetAll, isSpeaking: isPlayingRef.current, logs }; // ★ logsを返す
 };
 
 // --- スタイル定義 ---
@@ -903,8 +915,27 @@ const getBedStatusStyle = (status) => {
     }
 };
 
+// --- ★ 追加: ログ表示用パネルコンポーネント ---
+const LogPanel = ({ logs }) => (
+    <div className="bg-white p-4 rounded-lg shadow h-[400px] overflow-y-auto border border-gray-200">
+        <h3 className="text-lg font-bold mb-2 text-gray-800 border-b pb-2 sticky top-0 bg-white">システムメッセージ</h3>
+        {logs.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center mt-4">履歴はありません</p>
+        ) : (
+            <ul className="space-y-1">
+                {logs.map((log, i) => (
+                    <li key={i} className="text-sm text-gray-700 border-b border-gray-100 last:border-0 py-1">
+                        <span className="font-mono font-semibold mr-2 text-blue-600">{log.time}</span>
+                        {log.message}
+                    </li>
+                ))}
+            </ul>
+        )}
+    </div>
+);
+
 // --- InpatientAdminPage ---
-const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, handleResetAll, isSpeaking, onShowQrPage }) => {
+const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, handleResetAll, isSpeaking, onShowQrPage, logs }) => { // ★ logsを受け取る
   const [isLayoutEditMode, setIsLayoutEditMode] = useState(false);
   const [confirmResetModal, setConfirmResetModal] = useState(false);
   const onConfirmReset = () => { handleResetAll(); setConfirmResetModal(false); };
@@ -917,7 +948,17 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, handleR
           <button onClick={() => setConfirmResetModal(true)} title="全ベッドリセット" className="font-bold p-3 rounded-lg transition bg-red-600 hover:bg-red-700 text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg></button>
           <button onClick={() => setIsLayoutEditMode(!isLayoutEditMode)} title={isLayoutEditMode ? "編集を終了" : "ベッド配置を編集"} className={`font-bold p-3 rounded-lg transition ${isLayoutEditMode ? 'bg-gray-600 hover:bg-gray-700' : 'bg-yellow-500 hover:bg-yellow-600'} text-white`}>{isLayoutEditMode ? <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg> : <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>}</button>
       </div></div>
-      {isLayoutEditMode ? <LayoutEditor onSaveComplete={() => setIsLayoutEditMode(false)} initialPositions={bedLayout} /> : <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-auto">{bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => { const status = bedStatuses[bedNumber] || '空床'; const statusStyle = getBedStatusStyle(status); return (<button key={bedNumber} style={{ position: 'absolute', top, left }} className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`} onClick={() => handleAdminBedTap(bedNumber)}><span className="text-xl leading-none">{bedNumber}</span><span className="text-[10px] leading-tight mt-1">{status}</span></button>); })}</div>}
+      
+      {/* ★ 変更: レイアウトとログパネルの配置 */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <div className="lg:col-span-3">
+              {isLayoutEditMode ? <LayoutEditor onSaveComplete={() => setIsLayoutEditMode(false)} initialPositions={bedLayout} /> : <div className="relative w-full min-h-[400px] bg-white p-4 border rounded-lg shadow-inner overflow-auto">{bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => { const status = bedStatuses[bedNumber] || '空床'; const statusStyle = getBedStatusStyle(status); return (<button key={bedNumber} style={{ position: 'absolute', top, left }} className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`} onClick={() => handleAdminBedTap(bedNumber)}><span className="text-xl leading-none">{bedNumber}</span><span className="text-[10px] leading-tight mt-1">{status}</span></button>); })}</div>}
+          </div>
+          <div className="lg:col-span-1">
+              <LogPanel logs={logs} />
+          </div>
+      </div>
+
       {isSpeaking && <div className="fixed bottom-5 right-5 bg-yellow-400 text-black font-bold py-2 px-4 rounded-full shadow-lg flex items-center z-50"><svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>音声再生中...</div>}
     </div>
   );
@@ -941,7 +982,8 @@ const CompactQrScanner = ({ onScanSuccess }) => {
                 setScanResult(result); 
                 try {
                     const targetAudio = result.success ? globalSuccessAudio : globalErrorAudio;
-                    targetAudio.currentTime = 0; targetAudio.play().catch(e => console.error("再生エラー:", e));
+                    targetAudio.currentTime = 0;
+                    targetAudio.play().catch(e => console.error("再生エラー:", e));
                 } catch (e) { console.error("Audio再生処理エラー:", e); }
                 setTimeout(() => { isProcessingRef.current = false; setTimeout(() => setScanResult(null), 1000); }, 3000);
             };
@@ -1002,7 +1044,8 @@ const InpatientView = ({ user, onGoBack }) => {
     const [showQrPage, setShowQrPage] = useState(false); 
     const hideCoolSelector = true;
 
-    const { bedLayout, bedStatuses, loading, error, handleBedTap, handleAdminBedTap, handleResetAll, isSpeaking } = useBedData(currentPage);
+    // ★ logs を受け取る
+    const { bedLayout, bedStatuses, loading, error, handleBedTap, handleAdminBedTap, handleResetAll, isSpeaking, logs } = useBedData(currentPage);
     const NavButton = ({ page, label }) => (<button onClick={() => setCurrentPage(page)} className={`px-3 py-2 sm:px-4 rounded-lg font-medium transition duration-200 text-sm sm:text-base ${currentPage === page ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-200'}`}>{label}</button>);
 
     const renderPages = () => {
@@ -1010,7 +1053,8 @@ const InpatientView = ({ user, onGoBack }) => {
         if (loading) return <LoadingSpinner text="入院透析室データを読み込み中..." />;
         if (error) return <p className="text-red-500 text-center">{error}</p>;
         return (
-            <>{currentPage === 'admin' && <InpatientAdminPage bedLayout={bedLayout} bedStatuses={bedStatuses} handleAdminBedTap={handleAdminBedTap} handleResetAll={handleResetAll} isSpeaking={isSpeaking} onShowQrPage={() => setShowQrPage(true)} />}{currentPage === 'staff' && <InpatientStaffPage bedLayout={bedLayout} bedStatuses={bedStatuses} handleBedTap={handleBedTap} />}</>
+            // ★ logs を InpatientAdminPage に渡す
+            <>{currentPage === 'admin' && <InpatientAdminPage bedLayout={bedLayout} bedStatuses={bedStatuses} handleAdminBedTap={handleAdminBedTap} handleResetAll={handleResetAll} isSpeaking={isSpeaking} onShowQrPage={() => setShowQrPage(true)} logs={logs} />}{currentPage === 'staff' && <InpatientStaffPage bedLayout={bedLayout} bedStatuses={bedStatuses} handleBedTap={handleBedTap} />}</>
         );
     };
 
