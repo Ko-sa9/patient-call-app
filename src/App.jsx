@@ -877,7 +877,7 @@ const useBedData = (currentPage) => {
 
       // ★追加: 入室可能通知音の再生（読み上げとは独立して再生）
       if (shouldPlayEnterSound && currentPage === 'admin') {
-          const audio = new Audio('/sounds/success.mp3'); 
+          const audio = new Audio('/sounds/enter.mp3'); 
           audio.volume = 0.5; 
           audio.play().catch(e => console.error("SE再生エラー", e));
       }
