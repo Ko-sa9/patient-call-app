@@ -911,27 +911,34 @@ const getBedStatusStyle = (status) => {
 };
 
 // --- LogPanel ---
-const LogPanel = ({ logs }) => (
-    // md:w-64 から md:w-48 へ縮小
-    <div className="bg-white p-3 rounded-lg shadow border border-gray-200 flex-shrink-0 w-full md:w-48">
-        <h3 className="text-sm font-bold mb-2 text-gray-800 border-b pb-1 sticky top-0 bg-white">ログ</h3>
-        <div className="h-[350px] overflow-y-auto">
-            {logs.length === 0 ? (
-                <p className="text-xs text-gray-400 text-center mt-4">履歴なし</p>
-            ) : (
-                <ul className="space-y-1">
-                    {logs.map((log, i) => (
-                        // text-[14px] から text-[13px] へ縮小
-                        <li key={i} className="text-[13px] text-gray-700 border-b border-gray-50 last:border-0 py-1 leading-none">
-                            <span className="font-mono font-semibold mr-1 text-blue-600">{log.time}</span>
-                            {log.message}
-                        </li>
-                    ))}
-                </ul>
-            )}
+const LogPanel = ({ logs }) => {
+    // メッセージ内容に応じて背景色を決定するヘルパー関数
+    const getLogStyle = (message) => {
+        if (message.includes('入室可能')) return 'bg-blue-100';   // 入室可能なら薄い青
+        if (message.includes('送迎可能')) return 'bg-yellow-100'; // 送迎可能なら薄い黄色
+        return '';
+    };
+
+    return (
+        <div className="bg-white p-2 rounded-lg shadow border border-gray-200 flex-shrink-0 w-full md:w-40">
+            <h3 className="text-xs font-bold mb-2 text-gray-800 border-b pb-1 sticky top-0 bg-white z-10">ログ</h3>
+            <div className="h-[350px] overflow-y-auto">
+                {logs.length === 0 ? (
+                    <p className="text-[10px] text-gray-400 text-center mt-4">履歴なし</p>
+                ) : (
+                    <ul className="space-y-1">
+                        {logs.map((log, i) => (
+                            <li key={i} className={`text-[10px] text-gray-700 border-b border-gray-50 last:border-0 py-1 px-1 rounded leading-none ${getLogStyle(log.message)}`}>
+                                <span className="font-mono font-semibold mr-1 text-blue-600 block">{log.time}</span>
+                                {log.message}
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
 // --- InpatientAdminPage ---
 const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, handleResetAll, isSpeaking, onShowQrPage, logs }) => {
