@@ -920,7 +920,7 @@ const LogPanel = ({ logs }) => {
     };
 
     return (
-        <div className="bg-white p-2 rounded-lg shadow border border-gray-200 flex-shrink-0 w-full md:w-40">
+        <div className="bg-white p-2 rounded-lg shadow border border-gray-200 flex-shrink-0 w-full md:w-48">
             <h3 className="text-xs font-bold mb-2 text-gray-800 border-b pb-1 sticky top-0 bg-white z-10">ログ</h3>
             <div className="h-[350px] overflow-y-auto">
                 {logs.length === 0 ? (
@@ -928,7 +928,7 @@ const LogPanel = ({ logs }) => {
                 ) : (
                     <ul className="space-y-1">
                         {logs.map((log, i) => (
-                            <li key={i} className={`text-[10px] text-gray-700 border-b border-gray-50 last:border-0 py-1 px-1 rounded leading-none ${getLogStyle(log.message)}`}>
+                            <li key={i} className={`text-[13px] text-gray-700 border-b border-gray-50 last:border-0 py-1 px-1 rounded leading-none ${getLogStyle(log.message)}`}>
                                 <span className="font-mono font-semibold mr-1 text-blue-600 block">{log.time}</span>
                                 {log.message}
                             </li>
