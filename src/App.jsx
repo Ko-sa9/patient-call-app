@@ -594,6 +594,7 @@ const DriverPage = () => {
 
 const totalBeds = 20;
 const ItemTypes = { BED: 'bed' };
+const ALL_BED_STATUSES = ['空床', '入室可能', '入室連絡済', '治療中', '送迎可能', '退室連絡済'];
 
 const BedButton = ({ bedNumber, left, top }) => {
     const [{ isDragging }, drag] = useDrag(() => ({
@@ -721,18 +722,19 @@ const useBedData = (currentPage) => {
     return () => unsubscribe();
   }, [statusCollectionRef]); 
 
-  // 3. クリック処理 (スタッフ用)
+  // 3. クリック処理 (スタッフ用 - QRコード自動処理用)
   const handleBedTap = useCallback(async (bedNumber) => {
     const bedNumStr = bedNumber.toString();
     if (!bedStatuses) return;
     const currentStatus = bedStatuses[bedNumStr] || '空床'; 
     let newStatus = currentStatus;
     
+    // 循環フロー (QRコード用ロジックとして維持)
     if (currentStatus === '空床') { newStatus = '入室可能'; }
     else if (currentStatus === '入室可能') { newStatus = '入室連絡済'; }
     else if (currentStatus === '入室連絡済') { newStatus = '治療中'; }
     else if (currentStatus === '治療中') { newStatus = '送迎可能'; }
-    else if (currentStatus === '送迎可能') { newStatus = '治療中'; } // キャンセルして治療中に戻す
+    else if (currentStatus === '送迎可能') { newStatus = '治療中'; } 
     else if (currentStatus === '退室連絡済') { newStatus = '空床'; }
 
     if (newStatus !== currentStatus) {
@@ -741,13 +743,14 @@ const useBedData = (currentPage) => {
     }
   }, [bedStatuses, statusCollectionRef]);
 
-  // 4. クリック処理 (管理者用: 循環フロー)
+  // 4. クリック処理 (管理者用 - 循環フロー)
   const handleAdminBedTap = useCallback(async (bedNumber) => {
     const bedNumStr = bedNumber.toString();
     if (!bedStatuses) return;
     const currentStatus = bedStatuses[bedNumStr] || '空床';
     let newStatus = currentStatus;
     
+    // 循環フロー (維持するがUIでは使用しない方向へ)
     if (currentStatus === '空床') { newStatus = '入室可能'; }
     else if (currentStatus === '入室可能') { newStatus = '入室連絡済'; }
     else if (currentStatus === '入室連絡済') { newStatus = '治療中'; }
@@ -761,6 +764,13 @@ const useBedData = (currentPage) => {
     }
   }, [bedStatuses, statusCollectionRef]);
 
+  // ★ 5. 直接指定更新処理 (新UI用)
+  const updateBedStatusDirectly = useCallback(async (bedNumber, newStatus) => {
+      const bedNumStr = bedNumber.toString();
+      const bedDocRef = doc(statusCollectionRef, bedNumStr);
+      try { await updateDoc(bedDocRef, { status: newStatus }); } catch (err) { console.error("更新失敗:", err); alert("更新に失敗しました。"); }
+  }, [statusCollectionRef]);
+
   const handleResetAll = useCallback(async () => {
     const batch = writeBatch(db);
     for (let i = 1; i <= totalBeds; i++) {
@@ -770,7 +780,7 @@ const useBedData = (currentPage) => {
     try { await batch.commit(); } catch (err) { console.error("全リセット失敗:", err); alert("リセットに失敗しました。"); }
   }, [statusCollectionRef]);
 
-  // 5. 音声通知機能 & ログ機能
+  // 6. 音声通知機能 & ログ機能
   const prevStatusesRef = useRef(null); 
   const isPlayingRef = useRef(false); 
   const speechQueueRef = useRef([]); 
@@ -895,7 +905,7 @@ const useBedData = (currentPage) => {
   useEffect(() => { return () => { if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; } if (nextSpeechTimerRef.current) { clearTimeout(nextSpeechTimerRef.current); nextSpeechTimerRef.current = null; } speechQueueRef.current = []; isPlayingRef.current = false; nowPlayingRef.current = null; }; }, []);
 
   const isLoading = layoutLoading || statusLoading;
-  return { bedLayout, bedStatuses, loading: isLoading, error, handleBedTap, handleAdminBedTap, handleResetAll, isSpeaking: isPlayingRef.current, logs };
+  return { bedLayout, bedStatuses, loading: isLoading, error, handleBedTap, handleAdminBedTap, updateBedStatusDirectly, handleResetAll, isSpeaking: isPlayingRef.current, logs };
 };
 
 // --- スタイル定義 ---
@@ -940,11 +950,51 @@ const LogPanel = ({ logs }) => {
     );
 };
 
+// --- StatusSelectionPopover ---
+const StatusSelectionPopover = ({ currentStatus, onSelect, onClose }) => {
+    return (
+        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-50 bg-white shadow-xl rounded-lg p-3 w-40 flex flex-col gap-2 border border-gray-200 before:content-[''] before:absolute before:bottom-full before:left-1/2 before:-translate-x-1/2 before:border-8 before:border-transparent before:border-b-white">
+            <div className="text-xs font-bold text-gray-500 text-center mb-1">状態変更</div>
+            {ALL_BED_STATUSES.map(status => (
+                <button
+                    key={status}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(status);
+                    }}
+                    className={`text-sm py-2 px-2 rounded font-semibold text-center transition ${status === currentStatus ? 'ring-2 ring-offset-1 ring-blue-500 opacity-100' : 'opacity-80 hover:opacity-100'} ${getBedStatusStyle(status)}`}
+                >
+                    {status}
+                </button>
+            ))}
+            <div className="border-t pt-2 mt-1">
+                <button 
+                    onClick={(e) => { e.stopPropagation(); onClose(); }}
+                    className="w-full text-xs text-gray-500 hover:bg-gray-100 py-1 rounded"
+                >
+                    閉じる
+                </button>
+            </div>
+        </div>
+    );
+};
+
 // --- InpatientAdminPage ---
-const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, handleResetAll, isSpeaking, onShowQrPage, logs }) => {
+const InpatientAdminPage = ({ bedLayout, bedStatuses, updateBedStatusDirectly, handleResetAll, isSpeaking, onShowQrPage, logs }) => {
   const [isLayoutEditMode, setIsLayoutEditMode] = useState(false);
   const [confirmResetModal, setConfirmResetModal] = useState(false);
+  const [selectedBedId, setSelectedBedId] = useState(null); // ポップオーバー表示用
+  
   const onConfirmReset = () => { handleResetAll(); setConfirmResetModal(false); };
+
+  // 背景クリックでポップオーバーを閉じるためのハンドラ
+  useEffect(() => {
+      const handleClickOutside = () => setSelectedBedId(null);
+      if (selectedBedId) {
+          window.addEventListener('click', handleClickOutside);
+      }
+      return () => window.removeEventListener('click', handleClickOutside);
+  }, [selectedBedId]);
 
   return (
     <div className="space-y-6">
@@ -966,13 +1016,30 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, handleAdminBedTap, handleR
                 const status = bedStatuses[bedNumber] || '空床'; 
                 const statusStyle = getBedStatusStyle(status); 
                 return (
-                  <button key={bedNumber} style={{ position: 'absolute', top, left }} 
-                    className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`} 
-                    onClick={() => handleAdminBedTap(bedNumber)}
-                  >
-                    <span className="text-xl leading-none">{bedNumber}</span>
-                    <span className="text-[10px] leading-tight mt-1">{status}</span>
-                  </button>
+                  <div key={bedNumber} style={{ position: 'absolute', top, left }} className="z-10">
+                      <button 
+                        className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`} 
+                        onClick={(e) => {
+                            e.stopPropagation(); // 親への伝播を防ぐ
+                            setSelectedBedId(selectedBedId === bedNumber ? null : bedNumber);
+                        }}
+                      >
+                        <span className="text-xl leading-none">{bedNumber}</span>
+                        <span className="text-[10px] leading-tight mt-1">{status}</span>
+                      </button>
+                      
+                      {/* ポップオーバーの表示 */}
+                      {selectedBedId === bedNumber && (
+                          <StatusSelectionPopover 
+                              currentStatus={status} 
+                              onSelect={(newStatus) => {
+                                  updateBedStatusDirectly(bedNumber, newStatus);
+                                  setSelectedBedId(null);
+                              }}
+                              onClose={() => setSelectedBedId(null)}
+                          />
+                      )}
+                  </div>
                 ); 
               })}
             </div>
@@ -1032,7 +1099,16 @@ const CompactQrScanner = ({ onScanSuccess }) => {
 };
 
 // --- InpatientStaffPage ---
-const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
+const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap, updateBedStatusDirectly }) => {
+  const [selectedBedId, setSelectedBedId] = useState(null);
+
+  // 背景クリックでポップオーバーを閉じる
+  useEffect(() => {
+    const handleClickOutside = () => setSelectedBedId(null);
+    if (selectedBedId) { window.addEventListener('click', handleClickOutside); }
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, [selectedBedId]);
+
   const handleScanSuccess = useCallback((decodedText) => {
     const bedNumber = parseInt(decodedText, 10);
     if (bedNumber >= 1 && bedNumber <= totalBeds) {
@@ -1054,7 +1130,30 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap }) => {
         {bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
           const status = bedStatuses[bedNumber] || '空床';
           const statusStyle = getBedStatusStyle(status);
-          return (<button key={bedNumber} style={{ position: 'absolute', top, left }} className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`} onClick={() => handleBedTap(bedNumber)}><span className="text-xl leading-none">{bedNumber}</span><span className="text-[10px] leading-tight mt-1">{status}</span></button>);
+          return (
+            <div key={bedNumber} style={{ position: 'absolute', top, left }} className="z-10">
+                <button 
+                    className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`} 
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedBedId(selectedBedId === bedNumber ? null : bedNumber);
+                    }}
+                >
+                    <span className="text-xl leading-none">{bedNumber}</span>
+                    <span className="text-[10px] leading-tight mt-1">{status}</span>
+                </button>
+                {selectedBedId === bedNumber && (
+                    <StatusSelectionPopover 
+                        currentStatus={status} 
+                        onSelect={(newStatus) => {
+                            updateBedStatusDirectly(bedNumber, newStatus);
+                            setSelectedBedId(null);
+                        }}
+                        onClose={() => setSelectedBedId(null)}
+                    />
+                )}
+            </div>
+          );
         })}
       </div>
     </div>
@@ -1067,7 +1166,7 @@ const InpatientView = ({ user, onGoBack }) => {
     const [showQrPage, setShowQrPage] = useState(false); 
     const hideCoolSelector = true;
 
-    const { bedLayout, bedStatuses, loading, error, handleBedTap, handleAdminBedTap, handleResetAll, isSpeaking, logs } = useBedData(currentPage);
+    const { bedLayout, bedStatuses, loading, error, handleBedTap, handleAdminBedTap, updateBedStatusDirectly, handleResetAll, isSpeaking, logs } = useBedData(currentPage);
     const NavButton = ({ page, label }) => (<button onClick={() => setCurrentPage(page)} className={`px-3 py-2 sm:px-4 rounded-lg font-medium transition duration-200 text-sm sm:text-base ${currentPage === page ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-200'}`}>{label}</button>);
 
     const renderPages = () => {
@@ -1075,7 +1174,7 @@ const InpatientView = ({ user, onGoBack }) => {
         if (loading) return <LoadingSpinner text="入院透析室データを読み込み中..." />;
         if (error) return <p className="text-red-500 text-center">{error}</p>;
         return (
-            <>{currentPage === 'admin' && <InpatientAdminPage bedLayout={bedLayout} bedStatuses={bedStatuses} handleAdminBedTap={handleAdminBedTap} handleResetAll={handleResetAll} isSpeaking={isSpeaking} onShowQrPage={() => setShowQrPage(true)} logs={logs} />}{currentPage === 'staff' && <InpatientStaffPage bedLayout={bedLayout} bedStatuses={bedStatuses} handleBedTap={handleBedTap} />}</>
+            <>{currentPage === 'admin' && <InpatientAdminPage bedLayout={bedLayout} bedStatuses={bedStatuses} updateBedStatusDirectly={updateBedStatusDirectly} handleResetAll={handleResetAll} isSpeaking={isSpeaking} onShowQrPage={() => setShowQrPage(true)} logs={logs} />}{currentPage === 'staff' && <InpatientStaffPage bedLayout={bedLayout} bedStatuses={bedStatuses} handleBedTap={handleBedTap} updateBedStatusDirectly={updateBedStatusDirectly} />}</>
         );
     };
 
