@@ -953,8 +953,8 @@ const LogPanel = ({ logs }) => {
 // --- StatusSelectionPopover ---
 const StatusSelectionPopover = ({ currentStatus, onSelect, onClose }) => {
     return (
-        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-50 bg-white shadow-xl rounded-lg p-3 w-40 flex flex-col gap-2 border border-gray-200 before:content-[''] before:absolute before:bottom-full before:left-1/2 before:-translate-x-1/2 before:border-8 before:border-transparent before:border-b-white">
-            <div className="text-xs font-bold text-gray-500 text-center mb-1">状態変更</div>
+        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-50 bg-white shadow-xl rounded-lg p-2 flex gap-2 border border-gray-200 before:content-[''] before:absolute before:bottom-full before:left-1/2 before:-translate-x-1/2 before:border-8 before:border-transparent before:border-b-white">
+            {/* Header removed */}
             {ALL_BED_STATUSES.map(status => (
                 <button
                     key={status}
@@ -962,19 +962,12 @@ const StatusSelectionPopover = ({ currentStatus, onSelect, onClose }) => {
                         e.stopPropagation();
                         onSelect(status);
                     }}
-                    className={`text-sm py-2 px-2 rounded font-semibold text-center transition ${status === currentStatus ? 'ring-2 ring-offset-1 ring-blue-500 opacity-100' : 'opacity-80 hover:opacity-100'} ${getBedStatusStyle(status)}`}
+                    className={`w-20 h-16 flex items-center justify-center text-xs font-bold rounded-lg shadow-md transition ${status === currentStatus ? 'ring-2 ring-offset-2 ring-blue-500 scale-105' : 'hover:scale-105 opacity-90 hover:opacity-100'} ${getBedStatusStyle(status)}`}
                 >
                     {status}
                 </button>
             ))}
-            <div className="border-t pt-2 mt-1">
-                <button 
-                    onClick={(e) => { e.stopPropagation(); onClose(); }}
-                    className="w-full text-xs text-gray-500 hover:bg-gray-100 py-1 rounded"
-                >
-                    閉じる
-                </button>
-            </div>
+            {/* Footer removed */}
         </div>
     );
 };
