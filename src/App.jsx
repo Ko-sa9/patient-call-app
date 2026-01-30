@@ -956,18 +956,15 @@ const LogPanel = ({ logs }) => {
 const StatusSelectionPopover = ({ currentStatus, onSelect, onClose, align, availableStatuses = ALL_BED_STATUSES }) => {
     // 位置調整用のクラスを生成
     let positionClass = 'left-1/2 -translate-x-1/2'; // デフォルト: 中央
-    let triangleClass = 'left-1/2 -translate-x-1/2';
     
     if (align === 'left') {
         positionClass = 'left-0'; // 左寄せ
-        triangleClass = 'left-8'; // ツノも左寄りに（ボタンの中心付近）
     } else if (align === 'right') {
         positionClass = 'right-0'; // 右寄せ
-        triangleClass = 'right-8'; // ツノも右寄りに
     }
 
     return (
-        <div className={`absolute top-full mt-2 z-50 bg-white shadow-xl rounded-lg p-2 flex gap-2 border border-gray-200 ${positionClass} before:content-[''] before:absolute before:bottom-full before:border-8 before:border-transparent before:border-b-white ${triangleClass.startsWith('left') ? `before:left-8` : (triangleClass.startsWith('right') ? `before:right-8` : `before:left-1/2 before:-translate-x-1/2`)}`}>
+        <div className={`absolute top-full mt-2 z-50 bg-white shadow-2xl rounded-lg p-2 flex gap-2 border border-gray-300 ${positionClass}`}>
             {/* Header removed */}
             {availableStatuses.map(status => (
                 <button
@@ -1028,13 +1025,15 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, updateBedStatusDirectly, h
                 if (left < 200) popoverAlign = 'left';
                 else if (left > 600) popoverAlign = 'right';
 
+                const isSelected = selectedBedId === bedNumber;
+
                 return (
-                  <div key={bedNumber} style={{ position: 'absolute', top, left }} className="z-10">
+                  <div key={bedNumber} style={{ position: 'absolute', top, left }} className={isSelected ? "z-30" : "z-10"}>
                       <button 
-                        className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`} 
+                        className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90 ${isSelected ? 'ring-4 ring-blue-500 ring-offset-2' : ''}`} 
                         onClick={(e) => {
                             e.stopPropagation(); // 親への伝播を防ぐ
-                            setSelectedBedId(selectedBedId === bedNumber ? null : bedNumber);
+                            setSelectedBedId(isSelected ? null : bedNumber);
                         }}
                       >
                         <span className="text-xl leading-none">{bedNumber}</span>
@@ -1042,7 +1041,7 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, updateBedStatusDirectly, h
                       </button>
                       
                       {/* ポップオーバーの表示 */}
-                      {selectedBedId === bedNumber && (
+                      {isSelected && (
                           <StatusSelectionPopover 
                               currentStatus={status} 
                               onSelect={(newStatus) => {
@@ -1153,19 +1152,21 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap, updateBedSta
           if (left < 200) popoverAlign = 'left';
           else if (left > 600) popoverAlign = 'right';
 
+          const isSelected = selectedBedId === bedNumber;
+
           return (
-            <div key={bedNumber} style={{ position: 'absolute', top, left }} className="z-10">
+            <div key={bedNumber} style={{ position: 'absolute', top, left }} className={isSelected ? "z-30" : "z-10"}>
                 <button 
-                    className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90`} 
+                    className={`p-1 rounded-lg font-bold shadow-md w-20 h-16 flex flex-col justify-center items-center transition-colors duration-300 ${statusStyle} cursor-pointer hover:brightness-90 ${isSelected ? 'ring-4 ring-blue-500 ring-offset-2' : ''}`} 
                     onClick={(e) => {
                         e.stopPropagation();
-                        setSelectedBedId(selectedBedId === bedNumber ? null : bedNumber);
+                        setSelectedBedId(isSelected ? null : bedNumber);
                     }}
                 >
                     <span className="text-xl leading-none">{bedNumber}</span>
                     <span className="text-[10px] leading-tight mt-1">{status}</span>
                 </button>
-                {selectedBedId === bedNumber && (
+                {isSelected && (
                     <StatusSelectionPopover 
                         currentStatus={status} 
                         onSelect={(newStatus) => {
