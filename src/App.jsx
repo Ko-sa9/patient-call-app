@@ -953,7 +953,7 @@ const LogPanel = ({ logs }) => {
 };
 
 // --- StatusSelectionPopover ---
-const StatusSelectionPopover = ({ currentStatus, onSelect, onClose, align }) => {
+const StatusSelectionPopover = ({ currentStatus, onSelect, onClose, align, availableStatuses = ALL_BED_STATUSES }) => {
     // 位置調整用のクラスを生成
     let positionClass = 'left-1/2 -translate-x-1/2'; // デフォルト: 中央
     let triangleClass = 'left-1/2 -translate-x-1/2';
@@ -969,7 +969,7 @@ const StatusSelectionPopover = ({ currentStatus, onSelect, onClose, align }) => 
     return (
         <div className={`absolute top-full mt-2 z-50 bg-white shadow-xl rounded-lg p-2 flex gap-2 border border-gray-200 ${positionClass} before:content-[''] before:absolute before:bottom-full before:border-8 before:border-transparent before:border-b-white ${triangleClass.startsWith('left') ? `before:left-8` : (triangleClass.startsWith('right') ? `before:right-8` : `before:left-1/2 before:-translate-x-1/2`)}`}>
             {/* Header removed */}
-            {ALL_BED_STATUSES.map(status => (
+            {availableStatuses.map(status => (
                 <button
                     key={status}
                     onClick={(e) => {
@@ -1115,6 +1115,9 @@ const CompactQrScanner = ({ onScanSuccess }) => {
 // --- InpatientStaffPage ---
 const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap, updateBedStatusDirectly }) => {
   const [selectedBedId, setSelectedBedId] = useState(null);
+  
+  // スタッフ用に限定するステータス
+  const STAFF_ALLOWED_STATUSES = ['空床', '入室可能', '送迎可能'];
 
   // 背景クリックでポップオーバーを閉じる
   useEffect(() => {
@@ -1171,6 +1174,7 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap, updateBedSta
                         }}
                         onClose={() => setSelectedBedId(null)}
                         align={popoverAlign} // 位置情報を渡す
+                        availableStatuses={STAFF_ALLOWED_STATUSES} // スタッフ用ステータスを渡す
                     />
                 )}
             </div>
