@@ -228,7 +228,9 @@ const AdminPage = () => {
     const [confirmLoadModal, setConfirmLoadModal] = useState({ isOpen: false, onConfirm: () => { } });
     const [confirmClearListModal, setConfirmClearListModal] = useState({ isOpen: false });
     const [showQrList, setShowQrList] = useState(false);
-    const masterPatientsCollectionRef = collection(db, 'patients');
+    
+    // ★修正: 再レンダリングのたびにcollection参照が変わらないようmemo化
+    const masterPatientsCollectionRef = useMemo(() => collection(db, 'patients'), []);
     const dailyPatientsCollectionRef = (cool) => collection(db, 'daily_lists', `${selectedDate}_${selectedFacility}_${cool}`, 'patients');
 
     useEffect(() => {
@@ -951,9 +953,21 @@ const LogPanel = ({ logs }) => {
 };
 
 // --- StatusSelectionPopover ---
-const StatusSelectionPopover = ({ currentStatus, onSelect, onClose }) => {
+const StatusSelectionPopover = ({ currentStatus, onSelect, onClose, align }) => {
+    // 位置調整用のクラスを生成
+    let positionClass = 'left-1/2 -translate-x-1/2'; // デフォルト: 中央
+    let triangleClass = 'left-1/2 -translate-x-1/2';
+    
+    if (align === 'left') {
+        positionClass = 'left-0'; // 左寄せ
+        triangleClass = 'left-8'; // ツノも左寄りに（ボタンの中心付近）
+    } else if (align === 'right') {
+        positionClass = 'right-0'; // 右寄せ
+        triangleClass = 'right-8'; // ツノも右寄りに
+    }
+
     return (
-        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 z-50 bg-white shadow-xl rounded-lg p-2 flex gap-2 border border-gray-200 before:content-[''] before:absolute before:bottom-full before:left-1/2 before:-translate-x-1/2 before:border-8 before:border-transparent before:border-b-white">
+        <div className={`absolute top-full mt-2 z-50 bg-white shadow-xl rounded-lg p-2 flex gap-2 border border-gray-200 ${positionClass} before:content-[''] before:absolute before:bottom-full before:border-8 before:border-transparent before:border-b-white ${triangleClass.startsWith('left') ? `before:left-8` : (triangleClass.startsWith('right') ? `before:right-8` : `before:left-1/2 before:-translate-x-1/2`)}`}>
             {/* Header removed */}
             {ALL_BED_STATUSES.map(status => (
                 <button
@@ -1008,6 +1022,12 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, updateBedStatusDirectly, h
               {bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => { 
                 const status = bedStatuses[bedNumber] || '空床'; 
                 const statusStyle = getBedStatusStyle(status); 
+                
+                // ポップオーバー位置の決定ロジック
+                let popoverAlign = 'center';
+                if (left < 200) popoverAlign = 'left';
+                else if (left > 600) popoverAlign = 'right';
+
                 return (
                   <div key={bedNumber} style={{ position: 'absolute', top, left }} className="z-10">
                       <button 
@@ -1030,6 +1050,7 @@ const InpatientAdminPage = ({ bedLayout, bedStatuses, updateBedStatusDirectly, h
                                   setSelectedBedId(null);
                               }}
                               onClose={() => setSelectedBedId(null)}
+                              align={popoverAlign} // 位置情報を渡す
                           />
                       )}
                   </div>
@@ -1123,6 +1144,12 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap, updateBedSta
         {bedLayout && bedStatuses && Object.entries(bedLayout).map(([bedNumber, { top, left }]) => {
           const status = bedStatuses[bedNumber] || '空床';
           const statusStyle = getBedStatusStyle(status);
+
+          // ポップオーバー位置の決定ロジック
+          let popoverAlign = 'center';
+          if (left < 200) popoverAlign = 'left';
+          else if (left > 600) popoverAlign = 'right';
+
           return (
             <div key={bedNumber} style={{ position: 'absolute', top, left }} className="z-10">
                 <button 
@@ -1143,6 +1170,7 @@ const InpatientStaffPage = ({ bedLayout, bedStatuses, handleBedTap, updateBedSta
                             setSelectedBedId(null);
                         }}
                         onClose={() => setSelectedBedId(null)}
+                        align={popoverAlign} // 位置情報を渡す
                     />
                 )}
             </div>
