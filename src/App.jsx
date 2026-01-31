@@ -853,7 +853,7 @@ const useBedData = (currentPage) => {
         const previousStatus = prevStatuses[bedNumStr];
         
         // 送迎可能になった場合
-        if ((previousStatus === '治療中' || previousStatus === '退室連絡済') && currentStatus === '送迎可能') { 
+        if (previousStatus !== '送迎可能' && currentStatus === '送迎可能') { 
             newCalls.push(bedNumStr); 
             newLogs.push({ time: timeStr, message: `No.${bedNumStr} 送迎可能` });
         }
@@ -864,7 +864,7 @@ const useBedData = (currentPage) => {
         }
 
         // 入室可能になった場合
-        if (previousStatus === '空床' && currentStatus === '入室可能') {
+        if (previousStatus !== '入室可能' && currentStatus === '入室可能') {
             shouldPlayEnterSound = true;
             newLogs.push({ time: timeStr, message: `No.${bedNumStr} 入室可能` });
         }
