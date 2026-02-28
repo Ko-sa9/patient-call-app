@@ -1228,11 +1228,11 @@ const InpatientQrCodePage = ({ onBack }) => {
 // ==========================================================================================
 
 const GlobalControls = ({ hideCoolSelector = false }) => {
-    const { selectedFacility, setSelectedFacility, selectedDate, setSelectedDate, selectedCool, setSelectedCool } = useContext(AppContext);
+    const { selectedFacility, setSelectedFacility, selectedDate, selectedCool, setSelectedCool } = useContext(AppContext);
     return (
         <div className={`w-full bg-gray-100 p-3 rounded-lg mt-4 grid grid-cols-1 sm:grid-cols-${hideCoolSelector ? '2' : '3'} gap-3`}>
             <div><label htmlFor="global-facility" className="block text-xs font-medium text-gray-600">施設</label><select id="global-facility" value={selectedFacility} onChange={(e) => setSelectedFacility(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md transition text-sm">{FACILITIES.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
-            <div><label htmlFor="global-date" className="block text-xs font-medium text-gray-600">日付</label><input type="date" id="global-date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md transition text-sm" /></div>
+            <div><label className="block text-xs font-medium text-gray-600">日付 (自動更新)</label><div className="w-full p-2 border border-gray-200 bg-gray-200 text-gray-700 font-bold rounded-md transition text-sm flex items-center h-[38px] cursor-not-allowed">{selectedDate}</div></div>
             {!hideCoolSelector && (<div><label htmlFor="global-cool" className="block text-xs font-medium text-gray-600">クール</label><select id="global-cool" value={selectedCool} onChange={e => setSelectedCool(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md transition text-sm"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>)}
         </div>
     );
@@ -1286,6 +1286,16 @@ export default function App() {
     const [selectedFacility, setSelectedFacility] = useState(FACILITIES[0]);
     const [selectedDate, setSelectedDate] = useState(getTodayString());
     const [selectedCool, setSelectedCool] = useState('1');
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setSelectedDate(prevDate => {
+                const today = getTodayString();
+                return prevDate !== today ? today : prevDate;
+            });
+        }, 60000); // 60000ミリ秒(1分)ごとに日付が変わっていないかチェック
+        return () => clearInterval(timer);
+    }, []);
 
     useEffect(() => {
         const unlockAudio = () => {
