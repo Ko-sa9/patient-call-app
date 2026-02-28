@@ -466,7 +466,7 @@ const MonitorPage = () => {
         const patient = speechQueueRef.current.shift();
         nowPlayingRef.current = patient;
         const nameToSpeak = patient.furigana || patient.name;
-        const textToSpeak = `${nameToSpeak}さんのお迎えのかた、${patient.bed}番ベッドへお願いします。`;
+        const textToSpeak = `${nameToSpeak}さんの送迎のかた、お迎えお願いします。`;
         const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app";
         if (!textToSpeak || textToSpeak.trim() === "") { nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000); return; }
         fetch(functionUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: textToSpeak }), })
