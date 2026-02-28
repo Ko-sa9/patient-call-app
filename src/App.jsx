@@ -513,16 +513,56 @@ const StaffPage = () => {
     const [isScannerOpen, setScannerOpen] = useState(false);
     const actionPatients = allPatients.filter(p => p.status === '治療中' || p.status === '呼出中').sort((a, b) => a.bed.localeCompare(b.bed, undefined, { numeric: true }));
 
-    const handleScanSuccess = useCallback((decodedText) => {
+    const handleScanSuccess = useCallback(async (decodedText) => { // async を追加
         let result;
         const patientToCall = allPatients.find(p => p.masterPatientId === decodedText && p.status === '治療中');
+
         if (patientToCall) {
-            updatePatientStatus(selectedFacility, selectedDate, patientToCall.cool, patientToCall.id, '呼出中');
+            // リストにいて、治療中の場合（通常パターン）
+            await updatePatientStatus(selectedFacility, selectedDate, patientToCall.cool, patientToCall.id, '呼出中');
             result = { success: true, message: `${patientToCall.name} さんを呼び出しました。` };
         } else {
             const alreadyCalled = allPatients.find(p => p.masterPatientId === decodedText);
-            if (alreadyCalled) { result = { success: false, message: `既にお呼び出し済みか、対象外です。` }; }
-            else { result = { success: false, message: '患者が見つかりません。' }; }
+            if (alreadyCalled) {
+                // すでに呼び出し済み、または退出済みの場合
+                result = { success: false, message: `既にお呼び出し済みか、対象外です。` };
+            } else {
+                // === ここからステップC：リストにいない場合、マスタから探す ===
+                try {
+                    const masterRef = collection(db, 'patients');
+                    const q = query(masterRef, where("patientId", "==", decodedText), where("facility", "==", selectedFacility));
+                    const querySnapshot = await getDocs(q);
+
+                    if (!querySnapshot.empty) {
+                        // マスタにいた場合：臨時患者として当日リストに追加し、即座に「呼出中」にする
+                        const masterPatient = querySnapshot.docs[0].data();
+                        const masterDocId = querySnapshot.docs[0].id;
+                        const targetCool = masterPatient.cool || '1'; // マスタに登録されているクール
+
+                        const dailyListId = `${selectedDate}_${selectedFacility}_${targetCool}`;
+                        const dailyPatientsCollectionRef = collection(db, 'daily_lists', dailyListId, 'patients');
+
+                        await addDoc(dailyPatientsCollectionRef, {
+                            name: masterPatient.name || `${masterPatient.lastName || ''} ${masterPatient.firstName || ''}`.trim(),
+                            furigana: masterPatient.furigana || '',
+                            status: '呼出中',    // 最初から「呼出中」にする！
+                            isTemporary: true, // 臨時フラグ
+                            masterPatientId: masterPatient.patientId,
+                            masterDocId: masterDocId,
+                            createdAt: serverTimestamp(),
+                            updatedAt: serverTimestamp()
+                        });
+
+                        result = { success: true, message: `(臨時追加) ${masterPatient.name || masterPatient.lastName} さんを呼び出しました。` };
+                    } else {
+                        result = { success: false, message: 'マスタにも患者が見つかりません。' };
+                    }
+                } catch (error) {
+                    console.error("臨時追加エラー:", error);
+                    result = { success: false, message: '通信エラーが発生しました。' };
+                }
+                // === ステップC ここまで ===
+            }
         }
         return result;
     }, [allPatients, selectedFacility, selectedDate]);
@@ -549,17 +589,24 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
 
     useEffect(() => {
         const html5QrCode = new Html5Qrcode('qr-reader-container');
-        const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+        const qrCodeSuccessCallback = async (decodedText, decodedResult) => { // async を追加
             if (isProcessingRef.current) return;
             isProcessingRef.current = true;
-            const result = onScanSuccessRef.current(decodedText);
-            setScanResult(result);
+            
             try {
+                // データベースの検索・追加が終わるのを「待つ(await)」ように変更
+                const result = await onScanSuccessRef.current(decodedText);
+                setScanResult(result);
+                
                 const targetAudio = result.success ? globalSuccessAudio : globalErrorAudio;
                 targetAudio.currentTime = 0;
                 targetAudio.play().catch(e => console.error("再生エラー:", e));
-            } catch (e) { console.error("Audio再生処理エラー:", e); }
-            setTimeout(() => { isProcessingRef.current = false; setScanResult(null); }, 3000);
+            } catch (e) { 
+                console.error("Audio再生処理エラー:", e); 
+                setScanResult({ success: false, message: "処理中にエラーが発生しました。" });
+            } finally {
+                setTimeout(() => { isProcessingRef.current = false; setScanResult(null); }, 3000);
+            }
         };
         const config = { fps: 10, qrbox: { width: 250, height: 250 }, formatsToScan: [Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODABAR,] };
         html5QrCode.start({ facingMode: facingMode }, config, qrCodeSuccessCallback, undefined).catch(err => { console.error("スキャンの開始に失敗しました。", err); setScanResult({ success: false, message: "カメラの起動に失敗しました。" }); });
@@ -1076,16 +1123,20 @@ const CompactQrScanner = ({ onScanSuccess }) => {
     useEffect(() => {
         const timer = setTimeout(() => {
             const html5QrCode = new Html5Qrcode('qr-reader-compact');
-            const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+            const qrCodeSuccessCallback = async (decodedText, decodedResult) => { // async を追加
                 if (isProcessingRef.current) return;
                 isProcessingRef.current = true;
-                const result = onScanSuccessRef.current(decodedText);
-                setScanResult(result); 
+                
                 try {
+                    const result = await onScanSuccessRef.current(decodedText); // await を追加
+                    setScanResult(result); 
                     const targetAudio = result.success ? globalSuccessAudio : globalErrorAudio;
                     targetAudio.currentTime = 0; targetAudio.play().catch(e => console.error("再生エラー:", e));
-                } catch (e) { console.error("Audio再生処理エラー:", e); }
-                setTimeout(() => { isProcessingRef.current = false; setTimeout(() => setScanResult(null), 1000); }, 3000);
+                } catch (e) { 
+                    console.error("Audio再生処理エラー:", e); 
+                } finally {
+                    setTimeout(() => { isProcessingRef.current = false; setTimeout(() => setScanResult(null), 1000); }, 3000);
+                }
             };
             const config = { fps: 10, qrbox: { width: 110, height: 110 }, formatsToScan: [Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODABAR] };
             html5QrCode.start({ facingMode: facingMode }, config, qrCodeSuccessCallback, undefined).catch(err => { console.error("スキャン開始エラー:", err); setScanResult({ success: false, message: "カメラ起動失敗" }); });
