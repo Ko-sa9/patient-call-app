@@ -302,7 +302,7 @@ const AdminPage = () => {
 
     const handleMasterSubmit = async (e) => {
         e.preventDefault();
-        if (!masterFormData.lastName || !masterFormData.firstName || !masterFormData.bed || !masterFormData.patientId) { setFormError('必須項目をすべて入力してください。'); return; }
+        if (!masterFormData.lastName || !masterFormData.firstName || !masterFormData.patientId) { setFormError('必須項目をすべて入力してください。'); return; }
         const dataToSave = { patientId: masterFormData.patientId, lastName: masterFormData.lastName, firstName: masterFormData.firstName, furigana: masterFormData.furigana, day: masterFormData.day, cool: masterFormData.cool, facility: selectedFacility };
         try {
             if (editingMasterPatient) await updateDoc(doc(masterPatientsCollectionRef, editingMasterPatient.id), { ...dataToSave, updatedAt: serverTimestamp() });
