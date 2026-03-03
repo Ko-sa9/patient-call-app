@@ -509,7 +509,8 @@ const MonitorPage = () => {
 // --- StaffPage ---
 const StaffPage = () => {
     const { allPatients, loading } = useAllDayPatients();
-    const { selectedFacility, selectedDate } = useContext(AppContext);
+    // ↓ selectedCool を追加します
+    const { selectedFacility, selectedDate, selectedCool } = useContext(AppContext);
     const [isScannerOpen, setScannerOpen] = useState(false);
     const actionPatients = allPatients.filter(p => p.status === '治療中' || p.status === '呼出中').sort((a, b) => (a.furigana || '').localeCompare(b.furigana || '', 'ja'));
 
@@ -537,7 +538,7 @@ const StaffPage = () => {
                         // マスタにいた場合：臨時患者として当日リストに追加し、即座に「呼出中」にする
                         const masterPatient = querySnapshot.docs[0].data();
                         const masterDocId = querySnapshot.docs[0].id;
-                        const targetCool = masterPatient.cool || '1'; // マスタに登録されているクール
+                        const targetCool = selectedCool; // ★マスタ設定を無視して、現在選択中のクールに登録する！
 
                         const dailyListId = `${selectedDate}_${selectedFacility}_${targetCool}`;
                         const dailyPatientsCollectionRef = collection(db, 'daily_lists', dailyListId, 'patients');
@@ -565,7 +566,7 @@ const StaffPage = () => {
             }
         }
         return result;
-    }, [allPatients, selectedFacility, selectedDate]);
+    }, [allPatients, selectedFacility, selectedDate, selectedCool]);
 
     const unlockAudioManually = () => {
         [globalSuccessAudio, globalErrorAudio].forEach(audio => {
