@@ -508,6 +508,12 @@ const MonitorPage = () => {
 
 // --- StaffPage ---
 const StaffPage = () => {
+    const { allPatients, loading } = useAllDayPatients();
+    // ↓ selectedCool を追加します
+    const { selectedFacility, selectedDate, selectedCool } = useContext(AppContext);
+    const [isScannerOpen, setScannerOpen] = useState(false);
+    const actionPatients = allPatients.filter(p => p.status === '治療中' || p.status === '呼出中').sort((a, b) => (a.furigana || '').localeCompare(b.furigana || '', 'ja'));
+
     const handleScanSuccess = useCallback(async (decodedText) => {
         let result;
         
@@ -566,7 +572,6 @@ const StaffPage = () => {
         }
         return result;
     }, [allPatients, selectedFacility, selectedDate, selectedCool]);
-
     const unlockAudioManually = () => {
         [globalSuccessAudio, globalErrorAudio].forEach(audio => {
             audio.muted = true; audio.play().catch(() => {}).then(() => { audio.pause(); audio.currentTime = 0; audio.muted = false; });
