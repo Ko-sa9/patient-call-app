@@ -1279,25 +1279,46 @@ const InpatientQrCodePage = ({ onBack }) => {
 // ==========================================================================================
 
 const GlobalControls = ({ hideCoolSelector = false }) => {
-    const { selectedFacility, setSelectedFacility, selectedDate, selectedCool, setSelectedCool } = useContext(AppContext);
+    // selectedDate を削除
+    const { selectedFacility, setSelectedFacility, selectedCool, setSelectedCool } = useContext(AppContext);
     return (
-        <div className={`w-full bg-gray-100 p-3 rounded-lg mt-4 grid grid-cols-1 sm:grid-cols-${hideCoolSelector ? '2' : '3'} gap-3`}>
+        // 列数を 2:3 から 1:2 に減らしています
+        <div className={`w-full bg-gray-100 p-3 rounded-lg mt-4 grid grid-cols-1 sm:grid-cols-${hideCoolSelector ? '1' : '2'} gap-3`}>
             <div><label htmlFor="global-facility" className="block text-xs font-medium text-gray-600">施設</label><select id="global-facility" value={selectedFacility} onChange={(e) => setSelectedFacility(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md transition text-sm">{FACILITIES.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
-            <div><label className="block text-xs font-medium text-gray-600">日付 (自動更新)</label><div className="w-full p-2 border border-gray-200 bg-gray-200 text-gray-700 font-bold rounded-md transition text-sm flex items-center h-[38px] cursor-not-allowed">{selectedDate}</div></div>
             {!hideCoolSelector && (<div><label htmlFor="global-cool" className="block text-xs font-medium text-gray-600">クール</label><select id="global-cool" value={selectedCool} onChange={e => setSelectedCool(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md transition text-sm"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></div>)}
         </div>
     );
 };
 
-const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) => (
-    <div className="min-h-screen bg-gray-50 font-sans">
-        <nav className="bg-white shadow-md p-3 sm:p-4 mb-8 sticky top-0 z-40 print:hidden">
-            <div className="max-w-7xl mx-auto px-4"><div className="flex flex-wrap justify-between items-center"><div className="flex items-center">{onGoBack && (<button onClick={onGoBack} className="mr-4 flex items-center text-sm text-gray-600 hover:text-blue-600 transition"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg><span className="hidden sm:inline ml-1">戻る</span></button>)}<h1 className="text-lg sm:text-xl font-bold text-gray-800">患者呼び出しシステム</h1></div><div className="flex items-center space-x-1 sm:space-x-2 mt-2 sm:mt-0">{navButtons}</div></div><GlobalControls hideCoolSelector={hideCoolSelector} /></div>
-        </nav>
-        <main className="max-w-7xl mx-auto px-4 pb-8">{children}</main>
-        <footer className="text-center text-sm text-gray-500 py-6 mt-8 border-t print:hidden"><p>ユーザーID: <span className="font-mono text-xs">{user?.uid}</span></p></footer>
-    </div>
-);
+const AppLayout = ({ children, navButtons, user, onGoBack, hideCoolSelector }) => {
+    // AppContextから日付を取得するように追加
+    const { selectedDate } = useContext(AppContext);
+    
+    return (
+        <div className="min-h-screen bg-gray-50 font-sans">
+            <nav className="bg-white shadow-md p-3 sm:p-4 mb-8 sticky top-0 z-40 print:hidden">
+                <div className="max-w-7xl mx-auto px-4">
+                    <div className="flex flex-wrap justify-between items-center">
+                        <div className="flex items-center">
+                            {onGoBack && (<button onClick={onGoBack} className="mr-4 flex items-center text-sm text-gray-600 hover:text-blue-600 transition"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg><span className="hidden sm:inline ml-1">戻る</span></button>)}
+                            <h1 className="text-lg sm:text-xl font-bold text-gray-800">患者呼び出しシステム</h1>
+                        </div>
+                        <div className="flex items-center space-x-1 sm:space-x-2 mt-2 sm:mt-0">
+                            {/* ★ タブの左横に日付をコンパクトに配置 ★ */}
+                            <span className="text-sm sm:text-base font-bold text-gray-600 bg-gray-100 px-3 py-1.5 rounded-lg border mr-1 sm:mr-3">
+                                {selectedDate}
+                            </span>
+                            {navButtons}
+                        </div>
+                    </div>
+                    <GlobalControls hideCoolSelector={hideCoolSelector} />
+                </div>
+            </nav>
+            <main className="max-w-7xl mx-auto px-4 pb-8">{children}</main>
+            <footer className="text-center text-sm text-gray-500 py-6 mt-8 border-t print:hidden"><p>ユーザーID: <span className="font-mono text-xs">{user?.uid}</span></p></footer>
+        </div>
+    );
+};
 
 const StaffView = ({ user, onGoBack }) => {
     const [currentPage, setCurrentPage] = useState(isMobileDevice() ? 'staff' : 'admin');
