@@ -508,61 +508,60 @@ const MonitorPage = () => {
 
 // --- StaffPage ---
 const StaffPage = () => {
-    const { allPatients, loading } = useAllDayPatients();
-    // ↓ selectedCool を追加します
-    const { selectedFacility, selectedDate, selectedCool } = useContext(AppContext);
-    const [isScannerOpen, setScannerOpen] = useState(false);
-    const actionPatients = allPatients.filter(p => p.status === '治療中' || p.status === '呼出中').sort((a, b) => (a.furigana || '').localeCompare(b.furigana || '', 'ja'));
-
-    const handleScanSuccess = useCallback(async (decodedText) => { // async を追加
+    const handleScanSuccess = useCallback(async (decodedText) => {
         let result;
-        const patientToCall = allPatients.find(p => p.masterPatientId === decodedText && p.status === '治療中');
+        
+        // ① まず「現在選択しているクール」の中にいるか確認する
+        const patientInCurrentCool = allPatients.find(p => p.masterPatientId === decodedText && p.cool === selectedCool);
 
-        if (patientToCall) {
-            // リストにいて、治療中の場合（通常パターン）
-            await updatePatientStatus(selectedFacility, selectedDate, patientToCall.cool, patientToCall.id, '呼出中');
-            result = { success: true, message: `${patientToCall.name} さんを呼び出しました。` };
-        } else {
-            const alreadyCalled = allPatients.find(p => p.masterPatientId === decodedText);
-            if (alreadyCalled) {
-                // すでに呼び出し済み、または退出済みの場合
-                result = { success: false, message: `既にお呼び出し済みか、対象外です。` };
+        if (patientInCurrentCool) {
+            // 現在のクールにいる場合
+            if (patientInCurrentCool.status === '治療中') {
+                await updatePatientStatus(selectedFacility, selectedDate, selectedCool, patientInCurrentCool.id, '呼出中');
+                result = { success: true, message: `${patientInCurrentCool.name} さんを呼び出しました。` };
             } else {
-                // === ここからステップC：リストにいない場合、マスタから探す ===
-                try {
-                    const masterRef = collection(db, 'patients');
-                    const q = query(masterRef, where("patientId", "==", decodedText), where("facility", "==", selectedFacility));
-                    const querySnapshot = await getDocs(q);
-
-                    if (!querySnapshot.empty) {
-                        // マスタにいた場合：臨時患者として当日リストに追加し、即座に「呼出中」にする
-                        const masterPatient = querySnapshot.docs[0].data();
-                        const masterDocId = querySnapshot.docs[0].id;
-                        const targetCool = selectedCool; // ★マスタ設定を無視して、現在選択中のクールに登録する！
-
-                        const dailyListId = `${selectedDate}_${selectedFacility}_${targetCool}`;
-                        const dailyPatientsCollectionRef = collection(db, 'daily_lists', dailyListId, 'patients');
-
-                        await addDoc(dailyPatientsCollectionRef, {
-                            name: masterPatient.name || `${masterPatient.lastName || ''} ${masterPatient.firstName || ''}`.trim(),
-                            furigana: masterPatient.furigana || '',
-                            status: '呼出中',    // 最初から「呼出中」にする！
-                            isTemporary: true, // 臨時フラグ
-                            masterPatientId: masterPatient.patientId,
-                            masterDocId: masterDocId,
-                            createdAt: serverTimestamp(),
-                            updatedAt: serverTimestamp()
-                        });
-
-                        result = { success: true, message: `(臨時追加) ${masterPatient.name || masterPatient.lastName} さんを呼び出しました。` };
-                    } else {
-                        result = { success: false, message: 'マスタにも患者が見つかりません。' };
-                    }
-                } catch (error) {
-                    console.error("臨時追加エラー:", error);
-                    result = { success: false, message: '通信エラーが発生しました。' };
+                result = { success: false, message: `既にお呼び出し済みか、対象外です。` };
+            }
+        } else {
+            // ② 現在のクールにいない場合（別のクールにいる、または今日のリストに全くいない場合）
+            try {
+                // もし「別のクール（本来の予定など）」に入っていたら、古いデータを削除する（移動させるため）
+                const patientInOtherCool = allPatients.find(p => p.masterPatientId === decodedText && p.cool !== selectedCool);
+                if (patientInOtherCool) {
+                    await deleteDoc(doc(db, 'daily_lists', `${selectedDate}_${selectedFacility}_${patientInOtherCool.cool}`, 'patients', patientInOtherCool.id));
                 }
-                // === ステップC ここまで ===
+
+                const masterRef = collection(db, 'patients');
+                const q = query(masterRef, where("patientId", "==", decodedText), where("facility", "==", selectedFacility));
+                const querySnapshot = await getDocs(q);
+
+                if (!querySnapshot.empty) {
+                    // マスタからデータを取り出し、現在選択中のクールに「臨時」として追加する
+                    const masterPatient = querySnapshot.docs[0].data();
+                    const masterDocId = querySnapshot.docs[0].id;
+                    const targetCool = selectedCool; // ★確実に現在選択中のクールに登録！
+
+                    const dailyListId = `${selectedDate}_${selectedFacility}_${targetCool}`;
+                    const dailyPatientsCollectionRef = collection(db, 'daily_lists', dailyListId, 'patients');
+
+                    await addDoc(dailyPatientsCollectionRef, {
+                        name: masterPatient.name || `${masterPatient.lastName || ''} ${masterPatient.firstName || ''}`.trim(),
+                        furigana: masterPatient.furigana || '',
+                        status: '呼出中',    // 最初から「呼出中」にする
+                        isTemporary: true, // 移動してきた場合も「臨時」扱いにする
+                        masterPatientId: masterPatient.patientId,
+                        masterDocId: masterDocId,
+                        createdAt: serverTimestamp(),
+                        updatedAt: serverTimestamp()
+                    });
+
+                    result = { success: true, message: `(臨時追加) ${masterPatient.name || masterPatient.lastName} さんを呼び出しました。` };
+                } else {
+                    result = { success: false, message: 'マスタにも患者が見つかりません。' };
+                }
+            } catch (error) {
+                console.error("臨時追加エラー:", error);
+                result = { success: false, message: '通信エラーが発生しました。' };
             }
         }
         return result;
