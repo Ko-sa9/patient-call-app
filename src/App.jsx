@@ -1362,7 +1362,35 @@ export default function App() {
     const [selectedRole, setSelectedRole] = useState(null);
     const [selectedFacility, setSelectedFacility] = useState(FACILITIES[0]);
     const [selectedDate, setSelectedDate] = useState(getTodayString());
-    const [selectedCool, setSelectedCool] = useState('1');
+    const [selectedCoolLocal, setSelectedCoolLocal] = useState('1');
+
+// ▼▼▼ 追加：施設ごとのクール情報をFirestoreと同期 ▼▼▼
+    useEffect(() => {
+        if (!selectedFacility) return;
+        const docRef = doc(db, 'facility_status', selectedFacility);
+        const unsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists() && docSnap.data().currentCool) {
+                setSelectedCoolLocal(docSnap.data().currentCool);
+            } else {
+                setSelectedCoolLocal('1'); // データがなければ1クール
+            }
+        });
+        return () => unsubscribe();
+    }, [selectedFacility]);
+
+    // クール変更時にFirestoreも更新する関数
+    const setSelectedCool = useCallback(async (newCool) => {
+        setSelectedCoolLocal(newCool); // 画面を先に切り替える
+        try {
+            await setDoc(doc(db, 'facility_status', selectedFacility), {
+                currentCool: newCool,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+        } catch (error) {
+            console.error("クールの同期に失敗しました:", error);
+        }
+    }, [selectedFacility]);
+    // ▲▲▲ ここまで追加 ▲▲▲
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -1400,7 +1428,7 @@ export default function App() {
 
     return (
         <DndProvider backend={HTML5Backend}>
-            <AppContext.Provider value={{ selectedFacility, setSelectedFacility, selectedDate, setSelectedDate, selectedCool, setSelectedCool }}>
+            <AppContext.Provider value={{ selectedFacility, setSelectedFacility, selectedDate, setSelectedDate, selectedCool: selectedCoolLocal, setSelectedCool }}>
                 {viewMode === 'login' && <RoleSelectionPage onSelectRole={handleRoleSelect} />}
                 {viewMode === 'password' && <PasswordModal onSuccess={handlePasswordSuccess} onCancel={() => setViewMode('login')} />}
                 {viewMode === 'facilitySelection' && <FacilitySelectionPage onSelectFacility={handleFacilitySelect} onGoBack={() => setViewMode('login')} selectedRole={selectedRole} />} 
