@@ -175,7 +175,12 @@ const QrCodeListPage = ({ patients, onBack }) => {
         {/* フィルタリングされた患者リストを描画 */}
         {filteredPatients.length > 0 ? (
             filteredPatients
-            .sort((a, b) => a.bed.localeCompare(b.bed, undefined, { numeric: true })) // ベッド番号でソート
+            // ▼ ここを修正: bedが未定義の場合に備えて空文字("")をフォールバックとして使用します
+            .sort((a, b) => {
+                const bedA = a.bed || "";
+                const bedB = b.bed || "";
+                return bedA.localeCompare(bedB, undefined, { numeric: true });
+            })
             .map(patient => (
                 // patientIdが存在する場合のみQRコードを生成
                 patient.patientId && (
