@@ -17,6 +17,8 @@ import { QRCodeSVG } from 'qrcode.react';
 // --- 音声オブジェクト ---
 const globalSuccessAudio = new Audio('/sounds/success.mp3');
 const globalErrorAudio = new Audio('/sounds/error.mp3');
+// 読み上げ用に、空の音声オブジェクトを1つ追加します
+const globalSpeechAudio = new Audio();
 
 // --- Firebase設定 ---
 const firebaseConfig = {
@@ -31,7 +33,9 @@ const firebaseConfig = {
 // --- Firebase初期化 ---
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+const db = initializeFirestore(app, {
+    experimentalForceLongPolling: true
+});
 const functions = getFunctions(app, 'us-central1');
 
 // --- ヘルパー関数 ---
@@ -472,9 +476,10 @@ const MonitorPage = () => {
         fetch(functionUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: textToSpeak }), })
             .then(res => res.json()).then(data => {
                 if (data.audioContent) {
-                    const audio = new Audio("data:audio/mp3;base64," + data.audioContent);
+                    const audio = globalSpeechAudio; // 新しく作らず、ロック解除済みのものを使い回す
+                    audio.src = "data:audio/mp3;base64," + data.audioContent; // 中身のデータだけ入れ替える
                     currentAudioRef.current = audio;
-                    audio.play();
+                    audio.play().catch(e => console.error("音声再生エラー:", e)); // エラーが見えるようにしておく
                     audio.onended = () => { currentAudioRef.current = null; nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000); };
                 } else throw new Error(data.error || 'Audio content not found');
             })
@@ -862,9 +867,10 @@ const useBedData = (currentPage) => {
     fetch(functionUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: textToSpeak }), })
     .then(res => res.json()).then(data => {
       if (data.audioContent) {
-        const audio = new Audio("data:audio/mp3;base64," + data.audioContent);
+        const audio = globalSpeechAudio; // 新しく作らず、ロック解除済みのものを使い回す
+        audio.src = "data:audio/mp3;base64," + data.audioContent; // 中身のデータだけ入れ替える
         currentAudioRef.current = audio;
-        audio.play();
+        audio.play().catch(e => console.error("音声再生エラー:", e)); // エラーが見えるようにしておく
         audio.onended = () => { 
             currentAudioRef.current = null; 
             nowPlayingRef.current = null;
@@ -1404,7 +1410,8 @@ export default function App() {
 
     useEffect(() => {
         const unlockAudio = () => {
-            [globalSuccessAudio, globalErrorAudio].forEach(audio => { audio.muted = true; audio.play().catch(() => {}).then(() => { audio.pause(); audio.currentTime = 0; audio.muted = false; }); });
+            // globalSpeechAudio もロック解除の対象に含めます
+            [globalSuccessAudio, globalErrorAudio, globalSpeechAudio].forEach(audio => { audio.muted = true; audio.play().catch(() => {}).then(() => { audio.pause(); audio.currentTime = 0; audio.muted = false; }); });
             document.removeEventListener('click', unlockAudio); document.removeEventListener('touchstart', unlockAudio);
         };
         document.addEventListener('click', unlockAudio); document.addEventListener('touchstart', unlockAudio);
