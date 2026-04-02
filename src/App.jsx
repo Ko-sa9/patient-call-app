@@ -1,8 +1,7 @@
 import React, { useState, useEffect, createContext, useContext, useRef, useCallback, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch, setDoc } from 'firebase/firestore';
-import { getFunctions } from 'firebase/functions';
+import { getFirestore, collection, doc, onSnapshot, query, where, addDoc, getDocs, deleteDoc, updateDoc, serverTimestamp, writeBatch, setDoc, initializeFirestore } from 'firebase/firestore';import { getFunctions } from 'firebase/functions';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import * as wanakana from 'wanakana';
 import QrCodeListPage from './components/QrCodeListPage.js';
