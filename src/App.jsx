@@ -16,8 +16,8 @@ import { QRCodeSVG } from 'qrcode.react';
 // --- 音声オブジェクト ---
 const globalSuccessAudio = new Audio('/sounds/success.mp3');
 const globalErrorAudio = new Audio('/sounds/error.mp3');
-// 読み上げ用に、空の音声オブジェクトを1つ追加します
-const globalSpeechAudio = new Audio();
+const globalEnterAudio = new Audio('/sounds/enter.mp3'); // 追加：入室音も使い回す用
+const globalSpeechAudio = new Audio('/sounds/success.mp3'); // 変更：最初はダミーで音声をセットしておく（これでロック解除が効くようになります）
 
 // --- Firebase設定 ---
 const firebaseConfig = {
@@ -475,10 +475,11 @@ const MonitorPage = () => {
         fetch(functionUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: textToSpeak }), })
             .then(res => res.json()).then(data => {
                 if (data.audioContent) {
-                    const audio = globalSpeechAudio; // 新しく作らず、ロック解除済みのものを使い回す
-                    audio.src = "data:audio/mp3;base64," + data.audioContent; // 中身のデータだけ入れ替える
+                    const audio = globalSpeechAudio;
+                    audio.src = "data:audio/mp3;base64," + data.audioContent;
+                    audio.load(); // ★これを追加：iOS向けに明示的に読み込みを指示
                     currentAudioRef.current = audio;
-                    audio.play().catch(e => console.error("音声再生エラー:", e)); // エラーが見えるようにしておく
+                    audio.play().catch(e => console.error("音声再生エラー:", e));
                     audio.onended = () => { currentAudioRef.current = null; nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000); };
                 } else throw new Error(data.error || 'Audio content not found');
             })
@@ -577,7 +578,7 @@ const StaffPage = () => {
         return result;
     }, [allPatients, selectedFacility, selectedDate, selectedCool]);
     const unlockAudioManually = () => {
-        [globalSuccessAudio, globalErrorAudio].forEach(audio => {
+        [globalSuccessAudio, globalErrorAudio, globalEnterAudio, globalSpeechAudio].forEach(audio => {
             audio.muted = true; audio.play().catch(() => {}).then(() => { audio.pause(); audio.currentTime = 0; audio.muted = false; });
         });
     };
@@ -866,11 +867,11 @@ const useBedData = (currentPage) => {
     fetch(functionUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: textToSpeak }), })
     .then(res => res.json()).then(data => {
       if (data.audioContent) {
-        const audio = globalSpeechAudio; // 新しく作らず、ロック解除済みのものを使い回す
-        audio.src = "data:audio/mp3;base64," + data.audioContent; // 中身のデータだけ入れ替える
-        currentAudioRef.current = audio;
-        audio.play().catch(e => console.error("音声再生エラー:", e)); // エラーが見えるようにしておく
-        audio.onended = () => { 
+            const audio = globalSpeechAudio;
+            audio.src = "data:audio/mp3;base64," + data.audioContent;
+            audio.load(); // ★これを追加：iOS向けに明示的に読み込みを指示
+            currentAudioRef.current = audio;
+            audio.play().catch(e => console.error("音声再生エラー:", e));        audio.onended = () => { 
             currentAudioRef.current = null; 
             nowPlayingRef.current = null;
             nextSpeechTimerRef.current = setTimeout(() => {
@@ -950,7 +951,8 @@ const useBedData = (currentPage) => {
 
       // 入室可能通知音の再生
       if (shouldPlayEnterSound && currentPage === 'admin') {
-          const audio = new Audio('/sounds/enter.mp3'); 
+          const audio = globalEnterAudio; // 毎回作らずに使い回す
+          audio.currentTime = 0; // 最初から再生するようにリセット 
           audio.volume = 0.5; 
           audio.play().catch(e => console.error("SE再生エラー", e));
       }
@@ -1409,8 +1411,7 @@ export default function App() {
 
     useEffect(() => {
         const unlockAudio = () => {
-            // globalSpeechAudio もロック解除の対象に含めます
-            [globalSuccessAudio, globalErrorAudio, globalSpeechAudio].forEach(audio => { audio.muted = true; audio.play().catch(() => {}).then(() => { audio.pause(); audio.currentTime = 0; audio.muted = false; }); });
+            [globalSuccessAudio, globalErrorAudio, globalEnterAudio, globalSpeechAudio].forEach(audio => { audio.muted = true; audio.play().catch(() => {}).then(() => { audio.pause(); audio.currentTime = 0; audio.muted = false; }); });
             document.removeEventListener('click', unlockAudio); document.removeEventListener('touchstart', unlockAudio);
         };
         document.addEventListener('click', unlockAudio); document.addEventListener('touchstart', unlockAudio);
