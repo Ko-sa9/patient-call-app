@@ -59,6 +59,15 @@ const isMobileDevice = () => {
     return false;
 };
 
+// ひらがなをカタカナに変換する関数（読み間違い防止用）
+const hiraganaToKatakana = (str) => {
+    if (!str) return str;
+    return str.replace(/[\u3041-\u3096]/g, (match) => {
+        const chr = match.charCodeAt(0) + 0x60;
+        return String.fromCharCode(chr);
+    });
+};
+
 // --- UIコンポーネント ---
 const LoadingSpinner = ({ text = "読み込み中..." }) => (
     <div className="flex flex-col justify-center items-center h-full my-8">
@@ -469,17 +478,19 @@ const MonitorPage = () => {
         const patient = speechQueueRef.current.shift();
         nowPlayingRef.current = patient;
         const nameToSpeak = patient.furigana || patient.name;
-        const textToSpeak = `${nameToSpeak}さんの送迎のかた、お迎えお願いします。`;
+        
+        // ★ ここで、お名前部分だけをカタカナに変換してから文章を組み立てます ★
+        const textToSpeak = `${hiraganaToKatakana(nameToSpeak)}さんの送迎のかた、お迎えお願いします。`;
+        
         const functionUrl = "https://synthesizespeech-dewqhzsp5a-uc.a.run.app";
         if (!textToSpeak || textToSpeak.trim() === "") { nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000); return; }
         fetch(functionUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: textToSpeak }), })
             .then(res => res.json()).then(data => {
                 if (data.audioContent) {
-                    const audio = globalSpeechAudio;
-                    audio.src = "data:audio/mp3;base64," + data.audioContent;
-                    audio.load(); // ★これを追加：iOS向けに明示的に読み込みを指示
+                    const audio = globalSpeechAudio; // 新しく作らず、ロック解除済みのものを使い回す
+                    audio.src = "data:audio/mp3;base64," + data.audioContent; // 中身のデータだけ入れ替える
                     currentAudioRef.current = audio;
-                    audio.play().catch(e => console.error("音声再生エラー:", e));
+                    audio.play().catch(e => console.error("音声再生エラー:", e)); // エラーが見えるようにしておく
                     audio.onended = () => { currentAudioRef.current = null; nextSpeechTimerRef.current = setTimeout(speakNextInQueue, 1000); };
                 } else throw new Error(data.error || 'Audio content not found');
             })
