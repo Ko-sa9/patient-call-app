@@ -589,7 +589,7 @@ const StaffPage = () => {
     );
 };
 
-// --- QRScannerModal ---
+// --- QrScannerModal ---
 const QrScannerModal = ({ onClose, onScanSuccess }) => {
     const [scanResult, setScanResult] = useState(null);
     const isProcessingRef = useRef(false);
@@ -599,12 +599,11 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
 
     useEffect(() => {
         const html5QrCode = new Html5Qrcode('qr-reader-container');
-        const qrCodeSuccessCallback = async (decodedText, decodedResult) => { // async を追加
+        const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
             if (isProcessingRef.current) return;
             isProcessingRef.current = true;
             
             try {
-                // データベースの検索・追加が終わるのを「待つ(await)」ように変更
                 const result = await onScanSuccessRef.current(decodedText);
                 setScanResult(result);
                 
@@ -618,7 +617,13 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
                 setTimeout(() => { isProcessingRef.current = false; setScanResult(null); }, 3000);
             }
         };
-        const config = { fps: 10, qrbox: { width: 250, height: 250 }, formatsToScan: [Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODABAR,] };
+        // ★ ここに disableFlip: true を追加して反転を無効化しています ★
+        const config = { 
+            fps: 10, 
+            qrbox: { width: 250, height: 250 }, 
+            formatsToScan: [Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODABAR],
+            disableFlip: true 
+        };
         html5QrCode.start({ facingMode: facingMode }, config, qrCodeSuccessCallback, undefined).catch(err => { console.error("スキャンの開始に失敗しました。", err); setScanResult({ success: false, message: "カメラの起動に失敗しました。" }); });
         return () => { if (html5QrCode && html5QrCode.isScanning) { html5QrCode.stop().catch(err => { console.error("スキャナの停止に失敗しました。", err); }); } };
     }, [facingMode]);
@@ -1135,12 +1140,12 @@ const CompactQrScanner = ({ onScanSuccess }) => {
     useEffect(() => {
         const timer = setTimeout(() => {
             const html5QrCode = new Html5Qrcode('qr-reader-compact');
-            const qrCodeSuccessCallback = async (decodedText, decodedResult) => { // async を追加
+            const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
                 if (isProcessingRef.current) return;
                 isProcessingRef.current = true;
                 
                 try {
-                    const result = await onScanSuccessRef.current(decodedText); // await を追加
+                    const result = await onScanSuccessRef.current(decodedText);
                     setScanResult(result); 
                     const targetAudio = result.success ? globalSuccessAudio : globalErrorAudio;
                     targetAudio.currentTime = 0; targetAudio.play().catch(e => console.error("再生エラー:", e));
@@ -1150,7 +1155,13 @@ const CompactQrScanner = ({ onScanSuccess }) => {
                     setTimeout(() => { isProcessingRef.current = false; setTimeout(() => setScanResult(null), 1000); }, 3000);
                 }
             };
-            const config = { fps: 10, qrbox: { width: 110, height: 110 }, formatsToScan: [Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODABAR] };
+            // ★ ここにも disableFlip: true を追加しています ★
+            const config = { 
+                fps: 10, 
+                qrbox: { width: 110, height: 110 }, 
+                formatsToScan: [Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODABAR],
+                disableFlip: true 
+            };
             html5QrCode.start({ facingMode: facingMode }, config, qrCodeSuccessCallback, undefined).catch(err => { console.error("スキャン開始エラー:", err); setScanResult({ success: false, message: "カメラ起動失敗" }); });
             return () => { if (html5QrCode && html5QrCode.isScanning) { html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error); } };
         }, 100);
