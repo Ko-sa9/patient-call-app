@@ -608,18 +608,17 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
     useEffect(() => { onScanSuccessRef.current = onScanSuccess; }, [onScanSuccess]);
     const [facingMode, setFacingMode] = useState('environment');
 
-    // ★追加: 自動復旧用のステート（画面表示状態と再起動キー）
     const [scannerKey, setScannerKey] = useState(Date.now());
     const [isVisible, setIsVisible] = useState(true);
 
-    // ★追加: 画面がバックグラウンドに回ったかを監視
+    // 画面の表示/非表示を監視
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
                 setIsVisible(true);
-                setScannerKey(Date.now()); // 画面に戻ったらキーを更新して強制再起動
+                setScannerKey(Date.now());
             } else {
-                setIsVisible(false); // 隠れたら非表示にしてカメラを手放す
+                setIsVisible(false);
             }
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -627,10 +626,14 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
     }, []);
 
     useEffect(() => {
-        if (!isVisible) return; // 画面が見えていないときは起動しない
+        if (!isVisible) return;
 
         const html5QrCode = new Html5Qrcode('qr-reader-container');
+        let watchdogTimer;
+        let lastHeartbeat = Date.now(); // ★ 心拍確認用のタイムスタンプ
+
         const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
+            lastHeartbeat = Date.now(); // 成功時も心拍を更新
             if (isProcessingRef.current) return;
             isProcessingRef.current = true;
             
@@ -648,27 +651,53 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
                 setTimeout(() => { isProcessingRef.current = false; setScanResult(null); }, 3000);
             }
         };
+
+        // ★ 追加: スキャン失敗（＝QRが見つからない）時に呼ばれるコールバックを心拍として利用
+        const qrCodeErrorCallback = () => {
+            lastHeartbeat = Date.now();
+        };
         
         const config = { fps: 10, qrbox: { width: 250, height: 250 }, formatsToScan: [Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODABAR] };
-        html5QrCode.start({ facingMode: facingMode }, config, qrCodeSuccessCallback, undefined).catch(err => { console.error("スキャンの開始に失敗しました。", err); setScanResult({ success: false, message: "カメラの起動に失敗しました。" }); });
         
-        // ★修正: 確実に停止とクリアが行われるように修正
+        html5QrCode.start({ facingMode: facingMode }, config, qrCodeSuccessCallback, qrCodeErrorCallback)
+            .then(() => {
+                lastHeartbeat = Date.now(); // 起動完了時にリセット
+                
+                // ★ 修正: 心拍が途絶えていないか監視するウォッチドッグ
+                watchdogTimer = setInterval(() => {
+                    const now = Date.now();
+                    // 3.5秒以上、成功も失敗もコールバックが呼ばれなければフリーズとみなす
+                    if (now - lastHeartbeat > 3500) {
+                        console.warn("スキャナーのフリーズ(心拍停止)を検知しました。強制再起動します。");
+                        setScannerKey(Date.now());
+                    }
+                }, 2000);
+            })
+            .catch(err => { 
+                console.error("スキャンの開始に失敗しました。", err); 
+                setScanResult({ success: false, message: "カメラの起動に失敗しました。" }); 
+            });
+        
         return () => { 
+            if (watchdogTimer) clearInterval(watchdogTimer);
             if (html5QrCode && html5QrCode.isScanning) { 
-                html5QrCode.stop().then(() => html5QrCode.clear()).catch(err => console.error("スキャナ停止エラー", err)); 
+                html5QrCode.stop().then(() => html5QrCode.clear()).catch(err => console.log("停止時のエラー(無視してOK):", err)); 
             } 
         };
-    }, [facingMode, scannerKey, isVisible]); // scannerKeyが変わるたびに再実行される
+    }, [facingMode, scannerKey, isVisible]);
 
     const handleCameraSwitch = () => { setFacingMode(prev => prev === 'environment' ? 'user' : 'environment'); };
     return (
         <CustomModal title="QR/バーコードで呼び出し" onClose={onClose} footer={<button onClick={onClose} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">閉じる</button>}>
             {isVisible ? (
-                <div id="qr-reader-container" className={`w-full ${facingMode === 'user' ? '[&_video]:scale-x-[-1]' : ''}`}></div>
+                <div key={scannerKey} id="qr-reader-container" className={`w-full ${facingMode === 'user' ? '[&_video]:scale-x-[-1]' : ''}`}></div>
             ) : (
                 <div className="w-full h-64 bg-black flex items-center justify-center text-white rounded-lg">カメラ一時停止中...</div>
             )}
-            <div className="text-center mt-3"><button onClick={handleCameraSwitch} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition inline-flex items-center"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg>カメラ切替</button></div>
+            <div className="text-center mt-3 flex justify-center space-x-2">
+                <button onClick={handleCameraSwitch} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition inline-flex items-center"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg>カメラ切替</button>
+                <button onClick={() => setScannerKey(Date.now())} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition inline-flex items-center"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg>再起動</button>
+            </div>
             <div className={`mt-4 p-3 rounded text-center font-semibold transition-colors duration-300 ${scanResult ? (scanResult.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800') : 'bg-gray-100 text-gray-600'}`}>{scanResult ? scanResult.message : 'QRコードをかざしてください'}</div>
         </CustomModal>
     );
@@ -1173,16 +1202,14 @@ const CompactQrScanner = ({ onScanSuccess }) => {
     useEffect(() => { onScanSuccessRef.current = onScanSuccess; }, [onScanSuccess]);
     const [facingMode, setFacingMode] = useState('environment'); 
 
-    // ★追加: 自動復旧用のステート
     const [scannerKey, setScannerKey] = useState(Date.now());
     const [isVisible, setIsVisible] = useState(true);
 
-    // ★追加: 画面がバックグラウンドに回ったかを監視
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
                 setIsVisible(true);
-                setScannerKey(Date.now()); // 画面に戻ったら強制再起動
+                setScannerKey(Date.now()); 
             } else {
                 setIsVisible(false);
             }
@@ -1192,12 +1219,17 @@ const CompactQrScanner = ({ onScanSuccess }) => {
     }, []);
 
     useEffect(() => {
-        if (!isVisible) return; // 見えていないときは処理しない
+        if (!isVisible) return; 
 
         let html5QrCode;
+        let watchdogTimer;
+        let lastHeartbeat = Date.now(); // ★ 心拍確認用
+        
         const timer = setTimeout(() => {
             html5QrCode = new Html5Qrcode('qr-reader-compact');
+            
             const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
+                lastHeartbeat = Date.now();
                 if (isProcessingRef.current) return;
                 isProcessingRef.current = true;
                 
@@ -1212,16 +1244,38 @@ const CompactQrScanner = ({ onScanSuccess }) => {
                     setTimeout(() => { isProcessingRef.current = false; setTimeout(() => setScanResult(null), 1000); }, 3000);
                 }
             };
+
+            // ★ スキャン失敗コールバックを心拍に利用
+            const qrCodeErrorCallback = () => {
+                lastHeartbeat = Date.now();
+            };
             
             const config = { fps: 10, qrbox: { width: 110, height: 110 }, formatsToScan: [Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODABAR] };
-            html5QrCode.start({ facingMode: facingMode }, config, qrCodeSuccessCallback, undefined).catch(err => { console.error("スキャン開始エラー:", err); setScanResult({ success: false, message: "カメラ起動失敗" }); });
+            
+            html5QrCode.start({ facingMode: facingMode }, config, qrCodeSuccessCallback, qrCodeErrorCallback)
+                .then(() => {
+                    lastHeartbeat = Date.now();
+                    
+                    // ★ ウォッチドッグ（心拍監視）
+                    watchdogTimer = setInterval(() => {
+                        const now = Date.now();
+                        if (now - lastHeartbeat > 3500) {
+                            console.warn("コンパクトスキャナーのフリーズ検知。再起動します。");
+                            setScannerKey(Date.now());
+                        }
+                    }, 2000);
+                })
+                .catch(err => { 
+                    console.error("スキャン開始エラー:", err); 
+                    setScanResult({ success: false, message: "カメラ起動失敗" }); 
+                });
         }, 100);
 
-        // ★修正: setTimeout の外側に配置し、確実にクリーンアップを実行させる
         return () => { 
             clearTimeout(timer);
+            if (watchdogTimer) clearInterval(watchdogTimer);
             if (html5QrCode && html5QrCode.isScanning) { 
-                html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error); 
+                html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.log); 
             } 
         };
     }, [facingMode, scannerKey, isVisible]); 
@@ -1230,12 +1284,13 @@ const CompactQrScanner = ({ onScanSuccess }) => {
         <div className="flex w-full h-32 bg-white border border-gray-300 rounded-lg shadow-sm overflow-hidden mb-4">
             <div className="relative w-40 bg-black flex-shrink-0">
                 {isVisible ? (
-                    <div id="qr-reader-compact" className={`w-full h-full opacity-90 ${facingMode === 'user' ? '[&_video]:scale-x-[-1]' : ''}`} style={{ objectFit: 'cover' }}></div>
+                    <div key={scannerKey} id="qr-reader-compact" className={`w-full h-full opacity-90 ${facingMode === 'user' ? '[&_video]:scale-x-[-1]' : ''}`} style={{ objectFit: 'cover' }}></div>
                 ) : (
                     <div className="w-full h-full flex items-center justify-center text-white text-[10px]">待機中...</div>
                 )}
                 {isVisible && <div className="absolute top-2 left-2 w-3 h-3 bg-green-500 rounded-full animate-pulse border border-white z-10" title="カメラ動作中"></div>}
                 <button onClick={() => setFacingMode(prev => prev === 'environment' ? 'user' : 'environment')} className="absolute bottom-1 right-1 bg-gray-800 bg-opacity-70 text-white text-[10px] px-2 py-1 rounded border border-gray-600 z-10">切替</button>
+                <button onClick={() => setScannerKey(Date.now())} className="absolute bottom-1 left-1 bg-red-800 bg-opacity-70 text-white text-[10px] px-2 py-1 rounded border border-red-600 z-10">再起動</button>
             </div>
             <div className={`flex-1 flex flex-col justify-center items-center p-2 text-center transition-colors duration-300 ${scanResult ? (scanResult.success ? 'bg-green-100' : 'bg-red-100') : 'bg-gray-50'}`}>
                 {scanResult ? (<><div className={`text-2xl font-bold mb-1 ${scanResult.success ? 'text-green-700' : 'text-red-700'}`}>{scanResult.success ? 'OK!' : 'NG'}</div><p className={`text-2xl font-bold leading-tight ${scanResult.success ? 'text-green-800' : 'text-red-800'}`}>{scanResult.message}</p></>) : (<><p className="text-gray-400 font-bold text-lg mb-1">SCANNING...</p><p className="text-xs text-gray-500">コードをかざしてください</p></>)}
