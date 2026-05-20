@@ -610,17 +610,15 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
 
     const [scannerKey, setScannerKey] = useState(Date.now());
     const [isVisible, setIsVisible] = useState(true);
-    // ★追加: 再起動中（クールダウン中）を判定するステート
     const [isRestarting, setIsRestarting] = useState(false);
 
-    // ★追加: 安全にクールダウンを挟んで再起動する関数
     const performRestart = useCallback(() => {
         setIsRestarting(prev => {
-            if (prev) return prev; // 既に再起動中なら何もしない（連打防止）
+            if (prev) return prev;
             setTimeout(() => {
                 setScannerKey(Date.now());
-                setIsRestarting(false); // 1秒後にカメラを再マウント
-            }, 1000); // ★ 1秒のクールダウン（OSのカメラ解放を待つ）
+                setIsRestarting(false);
+            }, 1000); 
             return true;
         });
     }, []);
@@ -629,7 +627,7 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
                 setIsVisible(true);
-                performRestart(); // 画面に戻った時も安全にクールダウン再起動
+                performRestart();
             } else {
                 setIsVisible(false);
             }
@@ -639,15 +637,12 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
     }, [performRestart]);
 
     useEffect(() => {
-        // ★修正: 非表示時、または再起動（クールダウン）中は起動処理を行わない
         if (!isVisible || isRestarting) return;
 
         const html5QrCode = new Html5Qrcode('qr-reader-container');
         let watchdogTimer;
-        let lastHeartbeat = Date.now();
 
         const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
-            lastHeartbeat = Date.now();
             if (isProcessingRef.current) return;
             isProcessingRef.current = true;
             
@@ -666,21 +661,30 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
             }
         };
 
-        const qrCodeErrorCallback = () => {
-            lastHeartbeat = Date.now();
-        };
-        
         const config = { fps: 10, qrbox: { width: 250, height: 250 }, formatsToScan: [Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODABAR] };
         
-        html5QrCode.start({ facingMode: facingMode }, config, qrCodeSuccessCallback, qrCodeErrorCallback)
+        // ★修正: qrCodeErrorCallback は外して、純粋に video の再生時間だけを監視する
+        html5QrCode.start({ facingMode: facingMode }, config, qrCodeSuccessCallback, undefined)
             .then(() => {
-                lastHeartbeat = Date.now();
+                let lastVideoTime = -1;
+                let freezeCount = 0;
                 
                 watchdogTimer = setInterval(() => {
-                    const now = Date.now();
-                    if (now - lastHeartbeat > 3500) {
-                        console.warn("スキャナーのフリーズを検知。安全に再起動します。");
-                        performRestart(); // ★修正: クールダウン付きの再起動を呼ぶ
+                    const video = document.querySelector('#qr-reader-container video');
+                    // ビデオ要素が存在し、再生準備ができている場合
+                    if (video && video.readyState >= 2) {
+                        // 前回と再生時間が同じ（＝映像が止まっている）場合
+                        if (video.currentTime === lastVideoTime) {
+                            freezeCount++;
+                            if (freezeCount >= 2) { // 約4秒間フリーズしていたら
+                                console.warn("映像のフリーズを検知しました。安全に自動再起動します。");
+                                performRestart(); // ★確実なクールダウン再起動を呼び出す
+                            }
+                        } else {
+                            // 正常に動いている場合は時間とカウントをリセット
+                            lastVideoTime = video.currentTime;
+                            freezeCount = 0;
+                        }
                     }
                 }, 2000);
             })
@@ -692,7 +696,6 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
         return () => { 
             if (watchdogTimer) clearInterval(watchdogTimer);
             if (html5QrCode && html5QrCode.isScanning) { 
-                // ★ 非同期のstop処理。これが終わる前に次のstartが呼ばれないようクールダウンが活きる
                 html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {}); 
             } 
         };
@@ -1218,17 +1221,15 @@ const CompactQrScanner = ({ onScanSuccess }) => {
 
     const [scannerKey, setScannerKey] = useState(Date.now());
     const [isVisible, setIsVisible] = useState(true);
-    // ★追加: クールダウン判定用
     const [isRestarting, setIsRestarting] = useState(false);
 
-    // ★追加: 安全な再起動シーケンス
     const performRestart = useCallback(() => {
         setIsRestarting(prev => {
             if (prev) return prev;
             setTimeout(() => {
                 setScannerKey(Date.now());
                 setIsRestarting(false);
-            }, 1000); // 1秒クールダウン
+            }, 1000); 
             return true;
         });
     }, []);
@@ -1251,13 +1252,11 @@ const CompactQrScanner = ({ onScanSuccess }) => {
 
         let html5QrCode;
         let watchdogTimer;
-        let lastHeartbeat = Date.now(); 
         
         const timer = setTimeout(() => {
             html5QrCode = new Html5Qrcode('qr-reader-compact');
             
             const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
-                lastHeartbeat = Date.now();
                 if (isProcessingRef.current) return;
                 isProcessingRef.current = true;
                 
@@ -1272,22 +1271,28 @@ const CompactQrScanner = ({ onScanSuccess }) => {
                     setTimeout(() => { isProcessingRef.current = false; setTimeout(() => setScanResult(null), 1000); }, 3000);
                 }
             };
-
-            const qrCodeErrorCallback = () => {
-                lastHeartbeat = Date.now();
-            };
             
             const config = { fps: 10, qrbox: { width: 110, height: 110 }, formatsToScan: [Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODABAR] };
             
-            html5QrCode.start({ facingMode: facingMode }, config, qrCodeSuccessCallback, qrCodeErrorCallback)
+            // ★修正: こちらも純粋にビデオの再生時間を監視する
+            html5QrCode.start({ facingMode: facingMode }, config, qrCodeSuccessCallback, undefined)
                 .then(() => {
-                    lastHeartbeat = Date.now();
+                    let lastVideoTime = -1;
+                    let freezeCount = 0;
                     
                     watchdogTimer = setInterval(() => {
-                        const now = Date.now();
-                        if (now - lastHeartbeat > 3500) {
-                            console.warn("コンパクトスキャナーのフリーズ検知。安全に再起動します。");
-                            performRestart(); // ★ クールダウン再起動
+                        const video = document.querySelector('#qr-reader-compact video');
+                        if (video && video.readyState >= 2) {
+                            if (video.currentTime === lastVideoTime) {
+                                freezeCount++;
+                                if (freezeCount >= 2) { 
+                                    console.warn("コンパクトスキャナーの映像フリーズ検知。自動再起動します。");
+                                    performRestart(); // ★確実な再起動
+                                }
+                            } else {
+                                lastVideoTime = video.currentTime;
+                                freezeCount = 0;
+                            }
                         }
                     }, 2000);
                 })
