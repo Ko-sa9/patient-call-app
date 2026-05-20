@@ -610,30 +610,44 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
 
     const [scannerKey, setScannerKey] = useState(Date.now());
     const [isVisible, setIsVisible] = useState(true);
+    // ★追加: 再起動中（クールダウン中）を判定するステート
+    const [isRestarting, setIsRestarting] = useState(false);
 
-    // 画面の表示/非表示を監視
+    // ★追加: 安全にクールダウンを挟んで再起動する関数
+    const performRestart = useCallback(() => {
+        setIsRestarting(prev => {
+            if (prev) return prev; // 既に再起動中なら何もしない（連打防止）
+            setTimeout(() => {
+                setScannerKey(Date.now());
+                setIsRestarting(false); // 1秒後にカメラを再マウント
+            }, 1000); // ★ 1秒のクールダウン（OSのカメラ解放を待つ）
+            return true;
+        });
+    }, []);
+
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
                 setIsVisible(true);
-                setScannerKey(Date.now());
+                performRestart(); // 画面に戻った時も安全にクールダウン再起動
             } else {
                 setIsVisible(false);
             }
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, []);
+    }, [performRestart]);
 
     useEffect(() => {
-        if (!isVisible) return;
+        // ★修正: 非表示時、または再起動（クールダウン）中は起動処理を行わない
+        if (!isVisible || isRestarting) return;
 
         const html5QrCode = new Html5Qrcode('qr-reader-container');
         let watchdogTimer;
-        let lastHeartbeat = Date.now(); // ★ 心拍確認用のタイムスタンプ
+        let lastHeartbeat = Date.now();
 
         const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
-            lastHeartbeat = Date.now(); // 成功時も心拍を更新
+            lastHeartbeat = Date.now();
             if (isProcessingRef.current) return;
             isProcessingRef.current = true;
             
@@ -652,7 +666,6 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
             }
         };
 
-        // ★ 追加: スキャン失敗（＝QRが見つからない）時に呼ばれるコールバックを心拍として利用
         const qrCodeErrorCallback = () => {
             lastHeartbeat = Date.now();
         };
@@ -661,15 +674,13 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
         
         html5QrCode.start({ facingMode: facingMode }, config, qrCodeSuccessCallback, qrCodeErrorCallback)
             .then(() => {
-                lastHeartbeat = Date.now(); // 起動完了時にリセット
+                lastHeartbeat = Date.now();
                 
-                // ★ 修正: 心拍が途絶えていないか監視するウォッチドッグ
                 watchdogTimer = setInterval(() => {
                     const now = Date.now();
-                    // 3.5秒以上、成功も失敗もコールバックが呼ばれなければフリーズとみなす
                     if (now - lastHeartbeat > 3500) {
-                        console.warn("スキャナーのフリーズ(心拍停止)を検知しました。強制再起動します。");
-                        setScannerKey(Date.now());
+                        console.warn("スキャナーのフリーズを検知。安全に再起動します。");
+                        performRestart(); // ★修正: クールダウン付きの再起動を呼ぶ
                     }
                 }, 2000);
             })
@@ -681,22 +692,25 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
         return () => { 
             if (watchdogTimer) clearInterval(watchdogTimer);
             if (html5QrCode && html5QrCode.isScanning) { 
-                html5QrCode.stop().then(() => html5QrCode.clear()).catch(err => console.log("停止時のエラー(無視してOK):", err)); 
+                // ★ 非同期のstop処理。これが終わる前に次のstartが呼ばれないようクールダウンが活きる
+                html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {}); 
             } 
         };
-    }, [facingMode, scannerKey, isVisible]);
+    }, [facingMode, scannerKey, isVisible, isRestarting, performRestart]);
 
     const handleCameraSwitch = () => { setFacingMode(prev => prev === 'environment' ? 'user' : 'environment'); };
     return (
         <CustomModal title="QR/バーコードで呼び出し" onClose={onClose} footer={<button onClick={onClose} className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">閉じる</button>}>
-            {isVisible ? (
+            {isVisible && !isRestarting ? (
                 <div key={scannerKey} id="qr-reader-container" className={`w-full ${facingMode === 'user' ? '[&_video]:scale-x-[-1]' : ''}`}></div>
             ) : (
-                <div className="w-full h-64 bg-black flex items-center justify-center text-white rounded-lg">カメラ一時停止中...</div>
+                <div className="w-full h-64 bg-black flex items-center justify-center text-white rounded-lg">
+                    {isRestarting ? 'カメラを再接続中...' : 'カメラ一時停止中...'}
+                </div>
             )}
             <div className="text-center mt-3 flex justify-center space-x-2">
                 <button onClick={handleCameraSwitch} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition inline-flex items-center"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg>カメラ切替</button>
-                <button onClick={() => setScannerKey(Date.now())} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition inline-flex items-center"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg>再起動</button>
+                <button onClick={performRestart} disabled={isRestarting} className={`font-bold py-2 px-4 rounded-lg transition inline-flex items-center ${isRestarting ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white'}`}><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg>再起動</button>
             </div>
             <div className={`mt-4 p-3 rounded text-center font-semibold transition-colors duration-300 ${scanResult ? (scanResult.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800') : 'bg-gray-100 text-gray-600'}`}>{scanResult ? scanResult.message : 'QRコードをかざしてください'}</div>
         </CustomModal>
@@ -1204,26 +1218,40 @@ const CompactQrScanner = ({ onScanSuccess }) => {
 
     const [scannerKey, setScannerKey] = useState(Date.now());
     const [isVisible, setIsVisible] = useState(true);
+    // ★追加: クールダウン判定用
+    const [isRestarting, setIsRestarting] = useState(false);
+
+    // ★追加: 安全な再起動シーケンス
+    const performRestart = useCallback(() => {
+        setIsRestarting(prev => {
+            if (prev) return prev;
+            setTimeout(() => {
+                setScannerKey(Date.now());
+                setIsRestarting(false);
+            }, 1000); // 1秒クールダウン
+            return true;
+        });
+    }, []);
 
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
                 setIsVisible(true);
-                setScannerKey(Date.now()); 
+                performRestart();
             } else {
                 setIsVisible(false);
             }
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, []);
+    }, [performRestart]);
 
     useEffect(() => {
-        if (!isVisible) return; 
+        if (!isVisible || isRestarting) return; 
 
         let html5QrCode;
         let watchdogTimer;
-        let lastHeartbeat = Date.now(); // ★ 心拍確認用
+        let lastHeartbeat = Date.now(); 
         
         const timer = setTimeout(() => {
             html5QrCode = new Html5Qrcode('qr-reader-compact');
@@ -1245,7 +1273,6 @@ const CompactQrScanner = ({ onScanSuccess }) => {
                 }
             };
 
-            // ★ スキャン失敗コールバックを心拍に利用
             const qrCodeErrorCallback = () => {
                 lastHeartbeat = Date.now();
             };
@@ -1256,12 +1283,11 @@ const CompactQrScanner = ({ onScanSuccess }) => {
                 .then(() => {
                     lastHeartbeat = Date.now();
                     
-                    // ★ ウォッチドッグ（心拍監視）
                     watchdogTimer = setInterval(() => {
                         const now = Date.now();
                         if (now - lastHeartbeat > 3500) {
-                            console.warn("コンパクトスキャナーのフリーズ検知。再起動します。");
-                            setScannerKey(Date.now());
+                            console.warn("コンパクトスキャナーのフリーズ検知。安全に再起動します。");
+                            performRestart(); // ★ クールダウン再起動
                         }
                     }, 2000);
                 })
@@ -1275,22 +1301,24 @@ const CompactQrScanner = ({ onScanSuccess }) => {
             clearTimeout(timer);
             if (watchdogTimer) clearInterval(watchdogTimer);
             if (html5QrCode && html5QrCode.isScanning) { 
-                html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.log); 
+                html5QrCode.stop().then(() => html5QrCode.clear()).catch(() => {}); 
             } 
         };
-    }, [facingMode, scannerKey, isVisible]); 
+    }, [facingMode, scannerKey, isVisible, isRestarting, performRestart]); 
 
     return (
         <div className="flex w-full h-32 bg-white border border-gray-300 rounded-lg shadow-sm overflow-hidden mb-4">
             <div className="relative w-40 bg-black flex-shrink-0">
-                {isVisible ? (
+                {isVisible && !isRestarting ? (
                     <div key={scannerKey} id="qr-reader-compact" className={`w-full h-full opacity-90 ${facingMode === 'user' ? '[&_video]:scale-x-[-1]' : ''}`} style={{ objectFit: 'cover' }}></div>
                 ) : (
-                    <div className="w-full h-full flex items-center justify-center text-white text-[10px]">待機中...</div>
+                    <div className="w-full h-full flex items-center justify-center text-white text-[10px]">
+                        {isRestarting ? '再接続中...' : '待機中...'}
+                    </div>
                 )}
-                {isVisible && <div className="absolute top-2 left-2 w-3 h-3 bg-green-500 rounded-full animate-pulse border border-white z-10" title="カメラ動作中"></div>}
+                {isVisible && !isRestarting && <div className="absolute top-2 left-2 w-3 h-3 bg-green-500 rounded-full animate-pulse border border-white z-10" title="カメラ動作中"></div>}
                 <button onClick={() => setFacingMode(prev => prev === 'environment' ? 'user' : 'environment')} className="absolute bottom-1 right-1 bg-gray-800 bg-opacity-70 text-white text-[10px] px-2 py-1 rounded border border-gray-600 z-10">切替</button>
-                <button onClick={() => setScannerKey(Date.now())} className="absolute bottom-1 left-1 bg-red-800 bg-opacity-70 text-white text-[10px] px-2 py-1 rounded border border-red-600 z-10">再起動</button>
+                <button onClick={performRestart} disabled={isRestarting} className={`absolute bottom-1 left-1 bg-opacity-70 text-white text-[10px] px-2 py-1 rounded border z-10 ${isRestarting ? 'bg-gray-500 border-gray-500 cursor-not-allowed' : 'bg-red-800 border-red-600'}`}>再起動</button>
             </div>
             <div className={`flex-1 flex flex-col justify-center items-center p-2 text-center transition-colors duration-300 ${scanResult ? (scanResult.success ? 'bg-green-100' : 'bg-red-100') : 'bg-gray-50'}`}>
                 {scanResult ? (<><div className={`text-2xl font-bold mb-1 ${scanResult.success ? 'text-green-700' : 'text-red-700'}`}>{scanResult.success ? 'OK!' : 'NG'}</div><p className={`text-2xl font-bold leading-tight ${scanResult.success ? 'text-green-800' : 'text-red-800'}`}>{scanResult.message}</p></>) : (<><p className="text-gray-400 font-bold text-lg mb-1">SCANNING...</p><p className="text-xs text-gray-500">コードをかざしてください</p></>)}
