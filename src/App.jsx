@@ -722,6 +722,90 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
     );
 };
 
+// --- DriverPage ---
+const DriverPage = () => {
+    const { allPatients, loading } = useAllDayPatients();
+    const callingPatients = allPatients.filter(p => p.status === '呼出中').sort((a, b) => (a.furigana || '').localeCompare(b.furigana || '', 'ja'));
+    if (loading) return <LoadingSpinner text="送迎リストを読み込み中..." />;
+    return (
+        <div><h2 className="text-2xl font-bold mb-4">送迎担当者用画面</h2><div className="bg-white p-6 rounded-lg shadow"><h3 className="text-xl font-semibold mb-4">お呼び出し済みの患者様</h3>{callingPatients.length > 0 ? (<div className="space-y-3">{callingPatients.map(p => (<div key={p.id} className="p-4 bg-blue-100 rounded-lg text-blue-800 font-semibold text-lg">{p.name} 様</div>))}</div>) : (<p className="text-gray-500 text-center py-4">現在、お呼び出し済みの患者さんはいません。</p>)}</div></div>
+    );
+};
+
+// ==========================================================================================
+// 4. 入院透析室用コンポーネント
+// ==========================================================================================
+
+const totalBeds = 20;
+const ItemTypes = { BED: 'bed' };
+const ALL_BED_STATUSES = ['空床', '入室可能', '入室連絡済', '治療中', '送迎可能', '退室連絡済'];
+
+const BedButton = ({ bedNumber, left, top }) => {
+    const [{ isDragging }, drag] = useDrag(() => ({
+        type: ItemTypes.BED,
+        item: { bedNumber, left, top },
+        collect: (monitor) => ({ isDragging: monitor.isDragging(), }),
+    }), [bedNumber, left, top]);
+    const opacity = isDragging ? 0.4 : 1;
+    return <div ref={drag} style={{ position: 'absolute', left, top, opacity, cursor: 'move' }} className="p-3 bg-blue-500 text-white rounded-lg font-bold shadow-md w-20 h-16 flex justify-center items-center">{bedNumber}</div>;
+};
+
+// --- LayoutEditor ---
+const LayoutEditor = ({ onSaveComplete, initialPositions }) => {
+    const { selectedFacility } = useContext(AppContext);
+    const [bedPositions, setBedPositions] = useState(initialPositions);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState(null);
+    const layoutDocRef = doc(db, 'bedLayouts', selectedFacility);
+    const GRID_SNAP_X = 90; const GRID_SNAP_Y = 100; const OFFSET_X = 10; const OFFSET_Y = 50; const BED_WIDTH = 80; const BED_HEIGHT = 64;
+
+    const [, drop] = useDrop(() => ({
+        accept: ItemTypes.BED,
+        drop(item, monitor) {
+            const delta = monitor.getDifferenceFromInitialOffset();
+            if (!delta) return;
+            const newLeft = Math.round((item.left + delta.x - OFFSET_X) / GRID_SNAP_X) * GRID_SNAP_X + OFFSET_X;
+            const newTop = Math.round((item.top + delta.y - OFFSET_Y) / GRID_SNAP_Y) * GRID_SNAP_Y + OFFSET_Y;
+            const draggedBedNumber = item.bedNumber;
+            const originalPos = { top: item.top, left: item.left };
+
+            setBedPositions(currentPositions => {
+                const targetBedEntry = Object.entries(currentPositions).find(([num, pos]) => {
+                    if (num === draggedBedNumber) return false;
+                    return (newLeft < pos.left + BED_WIDTH && newLeft + BED_WIDTH > pos.left && newTop < pos.top + BED_HEIGHT && newTop + BED_HEIGHT > pos.top);
+                });
+                if (targetBedEntry) {
+                    const [targetNum, targetPos] = targetBedEntry;
+                    const newPositions = { ...currentPositions };
+                    newPositions[targetNum] = originalPos;
+                    newPositions[draggedBedNumber] = targetPos;
+                    return newPositions;
+                } else {
+                    return { ...currentPositions, [draggedBedNumber]: { top: newTop, left: newLeft }, };
+                }
+            });
+        },
+    }), []);
+
+    const handleSaveLayout = async () => {
+        setSaving(true); setError(null);
+        try { await setDoc(layoutDocRef, { positions: bedPositions }); if (onSaveComplete) onSaveComplete(); }
+        catch (err) { console.error("レイアウトの保存に失敗:", err); setError("保存に失敗しました。"); }
+        setSaving(false);
+    };
+
+    return (
+        <div className="p-4 border rounded-lg bg-gray-50">
+            <div className="flex justify-between items-center mb-4"><h3 className="text-lg font-bold">ベッド配置エディタ</h3><button onClick={handleSaveLayout} disabled={saving} title={saving ? "保存中..." : "レイアウトを保存"} className="font-bold p-3 rounded-lg transition bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400">{saving ? <svg className="animate-spin h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> : <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>}</button></div>
+            {error && <p className="text-red-500 text-center mb-4">{error}</p>}
+            <p className="text-sm text-gray-600 mb-4">ベッド（青い箱）をドラッグして配置を調整し、「レイアウトを保存」ボタンを押してください。</p>
+            <div ref={drop} className="relative w-full h-[400px] bg-white border-2 border-dashed border-gray-400 rounded-lg overflow-auto">
+                {bedPositions && Object.entries(bedPositions).map(([bedNumber, { top, left }]) => (<BedButton key={bedNumber} bedNumber={bedNumber} left={left} top={top} />))}
+            </div>
+        </div>
+    );
+};
+
 // --- useBedData Hook ---
 const useBedData = (currentPage) => {
   const { selectedFacility, selectedDate } = useContext(AppContext);
