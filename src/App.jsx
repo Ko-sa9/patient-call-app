@@ -715,7 +715,13 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
             )}
             <div className="text-center mt-3 flex justify-center space-x-2">
                 <button onClick={handleCameraSwitch} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition inline-flex items-center"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg>カメラ切替</button>
-                <button onClick={performRestart} disabled={isRestarting} className={`font-bold py-2 px-4 rounded-lg transition inline-flex items-center ${isRestarting ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white'}`}><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg>再起動</button>
+                <button onClick={performRestart} disabled={isRestarting} className={`font-bold py-2 px-4 rounded-lg transition inline-flex items-center ${isRestarting ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white'}`}>
+                    {/* ★ここを新しいSVGに置き換えました */}
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10" />
+                    </svg>
+                    再起動
+                </button>
             </div>
             <div className={`mt-4 p-3 rounded text-center font-semibold transition-colors duration-300 ${scanResult ? (scanResult.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800') : 'bg-gray-100 text-gray-600'}`}>{scanResult ? scanResult.message : 'QRコードをかざしてください'}</div>
         </CustomModal>
