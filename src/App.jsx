@@ -646,18 +646,35 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
             if (isProcessingRef.current) return;
             isProcessingRef.current = true;
             
+            // ★修正: データベース通信（非同期処理）の前に裏側で無音再生を開始し、OSのオーディオロックを維持する
+            globalSuccessAudio.muted = true;
+            globalErrorAudio.muted = true;
+            const successPlayPromise = globalSuccessAudio.play();
+            if (successPlayPromise !== undefined) successPlayPromise.catch(() => {});
+            const errorPlayPromise = globalErrorAudio.play();
+            if (errorPlayPromise !== undefined) errorPlayPromise.catch(() => {});
+
             try {
+                // ここでデータベース通信が発生します
                 const result = await onScanSuccessRef.current(decodedText);
                 setScanResult(result);
                 
                 const targetAudio = result.success ? globalSuccessAudio : globalErrorAudio;
+                
+                // ★修正: 確保しておいたオーディオを停止し、ミュートを解除・位置をリセットしてから本番の音を鳴らす
+                targetAudio.pause();
+                targetAudio.muted = false;
                 targetAudio.currentTime = 0;
-                targetAudio.play().catch(e => console.error("再生エラー:", e));
+                
+                // play() の Promise エラーもキャッチし、アプリ全体がクラッシュするのを防ぐ
+                const playPromise = targetAudio.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(e => console.error("再生エラー:", e));
+                }
             } catch (e) { 
                 console.error("Audio再生処理エラー:", e); 
                 setScanResult({ success: false, message: "処理中にエラーが発生しました。" });
             } finally {
-                // ★修正: 元の3秒（3000ミリ秒）ルールに戻しました
                 setTimeout(() => { 
                     isProcessingRef.current = false; 
                     setScanResult(null); 
@@ -716,7 +733,6 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
             <div className="text-center mt-3 flex justify-center space-x-2">
                 <button onClick={handleCameraSwitch} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition inline-flex items-center"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0114.13-4.13M20 15a9 9 0 01-14.13 4.13" /></svg>カメラ切替</button>
                 <button onClick={performRestart} disabled={isRestarting} className={`font-bold py-2 px-4 rounded-lg transition inline-flex items-center ${isRestarting ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white'}`}>
-                    {/* ★ここを新しいSVGに置き換えました */}
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10" />
                     </svg>
@@ -1267,15 +1283,34 @@ const CompactQrScanner = ({ onScanSuccess }) => {
                 if (isProcessingRef.current) return;
                 isProcessingRef.current = true;
                 
+                // ★修正: データベース通信（非同期処理）の前に裏側で無音再生を開始し、OSのオーディオロックを維持する
+                globalSuccessAudio.muted = true;
+                globalErrorAudio.muted = true;
+                const successPlayPromise = globalSuccessAudio.play();
+                if (successPlayPromise !== undefined) successPlayPromise.catch(() => {});
+                const errorPlayPromise = globalErrorAudio.play();
+                if (errorPlayPromise !== undefined) errorPlayPromise.catch(() => {});
+
                 try {
+                    // ここでデータベース通信が発生します
                     const result = await onScanSuccessRef.current(decodedText);
                     setScanResult(result); 
+                    
                     const targetAudio = result.success ? globalSuccessAudio : globalErrorAudio;
-                    targetAudio.currentTime = 0; targetAudio.play().catch(e => console.error("再生エラー:", e));
+                    
+                    // ★修正: 確保しておいたオーディオを停止し、ミュートを解除・位置をリセットしてから本番の音を鳴らす
+                    targetAudio.pause();
+                    targetAudio.muted = false;
+                    targetAudio.currentTime = 0;
+                    
+                    // play() の Promise エラーもキャッチし、アプリ全体がクラッシュするのを防ぐ
+                    const playPromise = targetAudio.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(e => console.error("再生エラー:", e));
+                    }
                 } catch (e) { 
                     console.error("Audio再生処理エラー:", e); 
                 } finally {
-                    // ★修正: 元の3秒ルールに戻し、結果の文字は1秒後に消す処理も元のままにしました
                     setTimeout(() => { 
                         isProcessingRef.current = false; 
                         setTimeout(() => setScanResult(null), 1000); 
