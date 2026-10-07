@@ -646,34 +646,47 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
             if (isProcessingRef.current) return;
             isProcessingRef.current = true;
             
-            // ★修正: データベース通信（非同期処理）の前に裏側で無音再生を開始し、OSのオーディオロックを維持する
+            // ★修正: データベース通信の間、両方の音声を「無音＆ループ」で再生し続け、OSのオーディオ再生権限を維持する
             globalSuccessAudio.muted = true;
+            globalSuccessAudio.loop = true;
+            globalSuccessAudio.play().catch(() => {});
+
             globalErrorAudio.muted = true;
-            const successPlayPromise = globalSuccessAudio.play();
-            if (successPlayPromise !== undefined) successPlayPromise.catch(() => {});
-            const errorPlayPromise = globalErrorAudio.play();
-            if (errorPlayPromise !== undefined) errorPlayPromise.catch(() => {});
+            globalErrorAudio.loop = true;
+            globalErrorAudio.play().catch(() => {});
 
             try {
-                // ここでデータベース通信が発生します
+                // データベース通信（成功時はここで数百ミリ秒の待機時間が発生する）
                 const result = await onScanSuccessRef.current(decodedText);
                 setScanResult(result);
                 
                 const targetAudio = result.success ? globalSuccessAudio : globalErrorAudio;
+                const unusedAudio = result.success ? globalErrorAudio : globalSuccessAudio;
                 
-                // ★修正: 確保しておいたオーディオを停止し、ミュートを解除・位置をリセットしてから本番の音を鳴らす
-                targetAudio.pause();
+                // 使わない方の音声は完全に停止させ、ループ設定も解除する
+                unusedAudio.pause();
+                unusedAudio.loop = false;
+                unusedAudio.currentTime = 0;
+                
+                // 使う方の音声は、ループ設定を解除し、ミュートを解いてから頭出しする
+                // （すでに裏で再生状態が維持されているため、ここで音が鳴る。OSにもブロックされない）
+                targetAudio.loop = false;
                 targetAudio.muted = false;
                 targetAudio.currentTime = 0;
                 
-                // play() の Promise エラーもキャッチし、アプリ全体がクラッシュするのを防ぐ
+                // 念のため再度 play() を呼び出し、エラーが起きてもアプリが停止しないようcatchする
                 const playPromise = targetAudio.play();
                 if (playPromise !== undefined) {
                     playPromise.catch(e => console.error("再生エラー:", e));
                 }
+
             } catch (e) { 
                 console.error("Audio再生処理エラー:", e); 
                 setScanResult({ success: false, message: "処理中にエラーが発生しました。" });
+                
+                // エラー発生時も裏で鳴り続けないよう、確実に音声をリセットする
+                globalSuccessAudio.pause(); globalSuccessAudio.loop = false;
+                globalErrorAudio.pause(); globalErrorAudio.loop = false;
             } finally {
                 setTimeout(() => { 
                     isProcessingRef.current = false; 
@@ -1283,33 +1296,44 @@ const CompactQrScanner = ({ onScanSuccess }) => {
                 if (isProcessingRef.current) return;
                 isProcessingRef.current = true;
                 
-                // ★修正: データベース通信（非同期処理）の前に裏側で無音再生を開始し、OSのオーディオロックを維持する
+                // ★修正: データベース通信の間、両方の音声を「無音＆ループ」で再生し続け、OSのオーディオ再生権限を維持する
                 globalSuccessAudio.muted = true;
+                globalSuccessAudio.loop = true;
+                globalSuccessAudio.play().catch(() => {});
+
                 globalErrorAudio.muted = true;
-                const successPlayPromise = globalSuccessAudio.play();
-                if (successPlayPromise !== undefined) successPlayPromise.catch(() => {});
-                const errorPlayPromise = globalErrorAudio.play();
-                if (errorPlayPromise !== undefined) errorPlayPromise.catch(() => {});
+                globalErrorAudio.loop = true;
+                globalErrorAudio.play().catch(() => {});
 
                 try {
-                    // ここでデータベース通信が発生します
+                    // データベース通信（成功時はここで数百ミリ秒の待機時間が発生する）
                     const result = await onScanSuccessRef.current(decodedText);
                     setScanResult(result); 
                     
                     const targetAudio = result.success ? globalSuccessAudio : globalErrorAudio;
+                    const unusedAudio = result.success ? globalErrorAudio : globalSuccessAudio;
                     
-                    // ★修正: 確保しておいたオーディオを停止し、ミュートを解除・位置をリセットしてから本番の音を鳴らす
-                    targetAudio.pause();
+                    // 使わない方の音声は完全に停止させ、ループ設定も解除する
+                    unusedAudio.pause();
+                    unusedAudio.loop = false;
+                    unusedAudio.currentTime = 0;
+                    
+                    // 使う方の音声は、ループ設定を解除し、ミュートを解いてから頭出しする
+                    targetAudio.loop = false;
                     targetAudio.muted = false;
                     targetAudio.currentTime = 0;
                     
-                    // play() の Promise エラーもキャッチし、アプリ全体がクラッシュするのを防ぐ
+                    // 念のため再度 play() を呼び出し、エラーが起きてもアプリが停止しないようcatchする
                     const playPromise = targetAudio.play();
                     if (playPromise !== undefined) {
                         playPromise.catch(e => console.error("再生エラー:", e));
                     }
+                    
                 } catch (e) { 
                     console.error("Audio再生処理エラー:", e); 
+                    // エラー発生時も裏で鳴り続けないよう、確実に音声をリセットする
+                    globalSuccessAudio.pause(); globalSuccessAudio.loop = false;
+                    globalErrorAudio.pause(); globalErrorAudio.loop = false;
                 } finally {
                     setTimeout(() => { 
                         isProcessingRef.current = false; 
