@@ -13,11 +13,96 @@ import { QRCodeSVG } from 'qrcode.react';
 // 1. 初期設定・ユーティリティ
 // ==========================================================================================
 
-// --- 音声オブジェクト ---
-const globalSuccessAudio = new Audio('/sounds/success.mp3');
-const globalErrorAudio = new Audio('/sounds/error.mp3');
-const globalEnterAudio = new Audio('/sounds/enter.mp3'); // 追加：入室音も使い回す用
-const globalSpeechAudio = new Audio('/sounds/success.mp3'); // 変更：最初はダミーで音声をセットしておく（これでロック解除が効くようになります）
+// --- 音声管理 (Web Audio API & HTML5 Audio) ---
+// TTS（お名前読み上げ）用のHTML5 Audio
+const globalSpeechAudio = new Audio('/sounds/success.mp3');
+
+// Web Audio API による低遅延・安定効果音再生（iPadOS対応）
+const AudioContextClass = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
+let globalAudioCtx = null;
+const soundBuffers = {};
+const soundUrls = {
+    success: '/sounds/success.mp3',
+    error: '/sounds/error.mp3',
+    enter: '/sounds/enter.mp3'
+};
+
+const getAudioContext = () => {
+    if (!globalAudioCtx && AudioContextClass) {
+        globalAudioCtx = new AudioContextClass();
+    }
+    return globalAudioCtx;
+};
+
+// 音声ファイルを事前にメモリへデコード
+const preloadSounds = async () => {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    Object.entries(soundUrls).forEach(async ([name, url]) => {
+        if (soundBuffers[name]) return;
+        try {
+            const res = await fetch(url);
+            const arrayBuffer = await res.arrayBuffer();
+            ctx.decodeAudioData(
+                arrayBuffer,
+                (decoded) => { soundBuffers[name] = decoded; },
+                (err) => console.error(`音声デコード失敗 (${name}):`, err)
+            );
+        } catch (e) {
+            console.error(`音声ファイル取得失敗 (${name}):`, e);
+        }
+    });
+};
+
+// 効果音再生関数（非同期通信の後でも確実に鳴る）
+const playSound = (name, volume = 1.0) => {
+    try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') {
+            ctx.resume();
+        }
+        const buffer = soundBuffers[name];
+        if (!buffer) {
+            preloadSounds();
+            return;
+        }
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        if (volume !== 1.0) {
+            const gainNode = ctx.createGain();
+            gainNode.gain.value = volume;
+            source.connect(gainNode);
+            gainNode.connect(ctx.destination);
+        } else {
+            source.connect(ctx.destination);
+        }
+        source.start(0);
+    } catch (e) {
+        console.error(`サウンド再生エラー (${name}):`, e);
+    }
+};
+
+// オーディオアンロック関数
+const unlockAudio = () => {
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+        ctx.resume();
+    }
+    preloadSounds();
+    if (globalSpeechAudio) {
+        globalSpeechAudio.muted = true;
+        globalSpeechAudio.play().catch(() => {}).then(() => {
+            globalSpeechAudio.pause();
+            globalSpeechAudio.currentTime = 0;
+            globalSpeechAudio.muted = false;
+        });
+    }
+};
+
+if (typeof window !== 'undefined') {
+    preloadSounds();
+}
 
 // --- Firebase設定 ---
 const firebaseConfig = {
@@ -589,9 +674,7 @@ const StaffPage = () => {
         return result;
     }, [allPatients, selectedFacility, selectedDate, selectedCool]);
     const unlockAudioManually = () => {
-        [globalSuccessAudio, globalErrorAudio, globalEnterAudio, globalSpeechAudio].forEach(audio => {
-            audio.muted = true; audio.play().catch(() => {}).then(() => { audio.pause(); audio.currentTime = 0; audio.muted = false; });
-        });
+        unlockAudio();
     };
 
     if (loading) return <LoadingSpinner text="呼び出しリストを読み込み中..." />;
@@ -645,48 +728,19 @@ const QrScannerModal = ({ onClose, onScanSuccess }) => {
         const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
             if (isProcessingRef.current) return;
             isProcessingRef.current = true;
-            
-            // ★修正: データベース通信の間、両方の音声を「無音＆ループ」で再生し続け、OSのオーディオ再生権限を維持する
-            globalSuccessAudio.muted = true;
-            globalSuccessAudio.loop = true;
-            globalSuccessAudio.play().catch(() => {});
-
-            globalErrorAudio.muted = true;
-            globalErrorAudio.loop = true;
-            globalErrorAudio.play().catch(() => {});
 
             try {
                 // データベース通信（成功時はここで数百ミリ秒の待機時間が発生する）
                 const result = await onScanSuccessRef.current(decodedText);
                 setScanResult(result);
                 
-                const targetAudio = result.success ? globalSuccessAudio : globalErrorAudio;
-                const unusedAudio = result.success ? globalErrorAudio : globalSuccessAudio;
-                
-                // 使わない方の音声は完全に停止させ、ループ設定も解除する
-                unusedAudio.pause();
-                unusedAudio.loop = false;
-                unusedAudio.currentTime = 0;
-                
-                // 使う方の音声は、ループ設定を解除し、ミュートを解いてから頭出しする
-                // （すでに裏で再生状態が維持されているため、ここで音が鳴る。OSにもブロックされない）
-                targetAudio.loop = false;
-                targetAudio.muted = false;
-                targetAudio.currentTime = 0;
-                
-                // 念のため再度 play() を呼び出し、エラーが起きてもアプリが停止しないようcatchする
-                const playPromise = targetAudio.play();
-                if (playPromise !== undefined) {
-                    playPromise.catch(e => console.error("再生エラー:", e));
-                }
+                // Web Audio API で確実に効果音を再生（iPadOS対応）
+                playSound(result.success ? 'success' : 'error');
 
             } catch (e) { 
-                console.error("Audio再生処理エラー:", e); 
+                console.error("スキャン処理エラー:", e); 
                 setScanResult({ success: false, message: "処理中にエラーが発生しました。" });
-                
-                // エラー発生時も裏で鳴り続けないよう、確実に音声をリセットする
-                globalSuccessAudio.pause(); globalSuccessAudio.loop = false;
-                globalErrorAudio.pause(); globalErrorAudio.loop = false;
+                playSound('error');
             } finally {
                 setTimeout(() => { 
                     isProcessingRef.current = false; 
@@ -1074,10 +1128,7 @@ const useBedData = (currentPage) => {
 
       // 入室可能通知音の再生
       if (shouldPlayEnterSound && currentPage === 'admin') {
-          const audio = globalEnterAudio; // 毎回作らずに使い回す
-          audio.currentTime = 0; // 最初から再生するようにリセット 
-          audio.volume = 0.5; 
-          audio.play().catch(e => console.error("SE再生エラー", e));
+          playSound('enter', 0.5);
       }
     }
     prevStatusesRef.current = bedStatuses;
@@ -1295,45 +1346,19 @@ const CompactQrScanner = ({ onScanSuccess }) => {
             const qrCodeSuccessCallback = async (decodedText, decodedResult) => {
                 if (isProcessingRef.current) return;
                 isProcessingRef.current = true;
-                
-                // ★修正: データベース通信の間、両方の音声を「無音＆ループ」で再生し続け、OSのオーディオ再生権限を維持する
-                globalSuccessAudio.muted = true;
-                globalSuccessAudio.loop = true;
-                globalSuccessAudio.play().catch(() => {});
-
-                globalErrorAudio.muted = true;
-                globalErrorAudio.loop = true;
-                globalErrorAudio.play().catch(() => {});
 
                 try {
                     // データベース通信（成功時はここで数百ミリ秒の待機時間が発生する）
                     const result = await onScanSuccessRef.current(decodedText);
                     setScanResult(result); 
                     
-                    const targetAudio = result.success ? globalSuccessAudio : globalErrorAudio;
-                    const unusedAudio = result.success ? globalErrorAudio : globalSuccessAudio;
-                    
-                    // 使わない方の音声は完全に停止させ、ループ設定も解除する
-                    unusedAudio.pause();
-                    unusedAudio.loop = false;
-                    unusedAudio.currentTime = 0;
-                    
-                    // 使う方の音声は、ループ設定を解除し、ミュートを解いてから頭出しする
-                    targetAudio.loop = false;
-                    targetAudio.muted = false;
-                    targetAudio.currentTime = 0;
-                    
-                    // 念のため再度 play() を呼び出し、エラーが起きてもアプリが停止しないようcatchする
-                    const playPromise = targetAudio.play();
-                    if (playPromise !== undefined) {
-                        playPromise.catch(e => console.error("再生エラー:", e));
-                    }
+                    // Web Audio API で確実に効果音を再生（iPadOS対応）
+                    playSound(result.success ? 'success' : 'error');
                     
                 } catch (e) { 
-                    console.error("Audio再生処理エラー:", e); 
-                    // エラー発生時も裏で鳴り続けないよう、確実に音声をリセットする
-                    globalSuccessAudio.pause(); globalSuccessAudio.loop = false;
-                    globalErrorAudio.pause(); globalErrorAudio.loop = false;
+                    console.error("スキャン処理エラー:", e); 
+                    setScanResult({ success: false, message: "処理中にエラーが発生しました。" });
+                    playSound('error');
                 } finally {
                     setTimeout(() => { 
                         isProcessingRef.current = false; 
@@ -1642,12 +1667,17 @@ export default function App() {
     }, []);
 
     useEffect(() => {
-        const unlockAudio = () => {
-            [globalSuccessAudio, globalErrorAudio, globalEnterAudio, globalSpeechAudio].forEach(audio => { audio.muted = true; audio.play().catch(() => {}).then(() => { audio.pause(); audio.currentTime = 0; audio.muted = false; }); });
-            document.removeEventListener('click', unlockAudio); document.removeEventListener('touchstart', unlockAudio);
+        const handleUserInteraction = () => {
+            unlockAudio();
+            document.removeEventListener('click', handleUserInteraction);
+            document.removeEventListener('touchstart', handleUserInteraction);
         };
-        document.addEventListener('click', unlockAudio); document.addEventListener('touchstart', unlockAudio);
-        return () => { document.removeEventListener('click', unlockAudio); document.removeEventListener('touchstart', unlockAudio); };
+        document.addEventListener('click', handleUserInteraction);
+        document.addEventListener('touchstart', handleUserInteraction);
+        return () => {
+            document.removeEventListener('click', handleUserInteraction);
+            document.removeEventListener('touchstart', handleUserInteraction);
+        };
     }, []);
     
     useEffect(() => {
